@@ -1354,8 +1354,9 @@ namespace PV227
 		if (!success)
 		{
 			ilBindImage(0);
-			ilDeleteImages(1, &IL_tex); 
-			printf("Couldn't load texture: %S\n", filename);
+			ilDeleteImages(1, &IL_tex);
+			ILenum error = ilGetError();
+			printf("Couldn't load texture: %S, error: %d\n", filename, error);
 			return false;
 		}
 
