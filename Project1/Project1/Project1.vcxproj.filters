@@ -55,9 +55,6 @@
     <None Include="Shaders\texture_vertex.glsl">
       <Filter>Shaders</Filter>
     </None>
-    <None Include="Shaders\fullscreen_quad_vertex.glsl">
-      <Filter>Shaders</Filter>
-    </None>
     <None Include="Shaders\notexture_fragment.glsl">
       <Filter>Shaders</Filter>
     </None>
@@ -71,6 +68,12 @@
       <Filter>Shaders</Filter>
     </None>
     <None Include="Shaders\glass_fragment-blur.glsl" />
+    <None Include="Shaders\fullscreen_quad_vertex.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\display_texture_fragment.glsl">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Project1_main.h">

@@ -5,6 +5,7 @@ in VertexData
 {
 	vec3 position_ws;
 	vec3 normal_ws;
+	vec2 tex_coord;
 } inData;
 
 // Output variables
@@ -23,6 +24,8 @@ layout (std140, binding = 0) uniform CameraData
 
 // Data of the object
 uniform float glass_transparency;
+
+layout (binding = 0) uniform sampler2D tex;
 
 // Data of the material
 layout (std140, binding = 3) uniform MaterialData
@@ -62,5 +65,7 @@ layout (std140, binding = 1) uniform PhongLightsData
 
 void main()
 {
-	final_color = vec4(glass_transparency, glass_transparency, glass_transparency, glass_transparency);
+	vec4 tex_color = texture(tex, inData.tex_coord);
+	vec4 my_color = vec4(glass_transparency, glass_transparency, glass_transparency, glass_transparency);
+	final_color = mix(tex_color, my_color, glass_transparency);
 }

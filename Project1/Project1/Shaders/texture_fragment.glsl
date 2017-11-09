@@ -24,7 +24,6 @@ layout (std140, binding = 0) uniform CameraData
 
 // Data of the object
 layout (binding = 0) uniform sampler2D object_tex;
-layout (binding = 1) uniform sampler2D color_tex;
 
 // Data of the material
 layout (std140, binding = 3) uniform MaterialData
@@ -62,58 +61,35 @@ layout (std140, binding = 1) uniform PhongLightsData
 // Evaluates the lighting of one Phong light. The implementation is at the end of the file
 void EvaluatePhongLight(in PhongLight light, out vec3 amb, out vec3 dif, out vec3 spe, in vec3 normal, in vec3 position, in vec3 eye, in float shininess);
 
-// Data of the object
-uniform int blur_enabled;
-
 //-----------------------------------------------------------------------
 
 void main()
 {
-	if (blur_enabled)
+	vec3 tex_color = texture(object_tex, inData.tex_coord).rgb;
+	// Compute the lighting
+	vec3 N = normalize(inData.normal_ws);
+	vec3 Eye = normalize(eye_position - inData.position_ws);
+
+	vec3 amb = global_ambient_color;
+	vec3 dif = vec3(0.0);
+	vec3 spe = vec3(0.0);
+
+	for (int i = 0; i < lights_count; i++)
 	{
-		// Gaussian blur
-		/*vec2 texel_size = 1.0 / textureSize(color_tex, 0);		// Size of one texel when texture coordinates are in range (0,1)
-		vec3 sum = vec3(0.0);
-		for (int x = 0; x < gauss9.length(); x++)
-		for (int y = 0; y < gauss9.length(); y++)
-		{
-			// Offset from the center texel
-			vec2 offset = texel_size * (vec2(x, y) - vec2(gauss9.length()/2));
-			// Adding weighted value
-			sum += gauss9[x] * gauss9[y] * textureLod(color_tex, inData.tex_coord + offset * blur_width, 0).xyz;
-		}
-		final_color = vec4(sum / gauss9x9_sum, 0.0);*/
-		final_color = vec4(0.0, 0.0, 1.0, 1.0);
+		vec3 a, d, s;
+		EvaluatePhongLight(lights[i], a, d, s, N, inData.position_ws, Eye, material.shininess);
+		amb += a;	dif += d;	spe += s;
 	}
-	else
-	{
-		vec3 tex_color = texture(object_tex, inData.tex_coord).rgb;
 
-		// Compute the lighting
-		vec3 N = normalize(inData.normal_ws);
-		vec3 Eye = normalize(eye_position - inData.position_ws);
+	// Compute the material
+	vec3 mat_ambient = tex_color;
+	vec3 mat_diffuse = tex_color;
+	vec3 mat_specular = material.specular;
 
-		vec3 amb = global_ambient_color;
-		vec3 dif = vec3(0.0);
-		vec3 spe = vec3(0.0);
+	// Compute the final color
+	vec3 final_light = mat_ambient * amb + mat_diffuse * dif + mat_specular * spe;
 
-		for (int i = 0; i < lights_count; i++)
-		{
-			vec3 a, d, s;
-			EvaluatePhongLight(lights[i], a, d, s, N, inData.position_ws, Eye, material.shininess);
-			amb += a;	dif += d;	spe += s;
-		}
-
-		// Compute the material
-		vec3 mat_ambient = tex_color;
-		vec3 mat_diffuse = tex_color;
-		vec3 mat_specular = material.specular;
-
-		// Compute the final color
-		vec3 final_light = mat_ambient * amb + mat_diffuse * dif + mat_specular * spe;
-
-		final_color = vec4(final_light, 1.0);
-	}
+	final_color = vec4(final_light, 1.0);
 }
 
 //-----------------------------------------------------------------------

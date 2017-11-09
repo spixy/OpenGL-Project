@@ -15,6 +15,7 @@ ShaderProgram notexture_program;
 ShaderProgram texture_program;
 ShaderProgram glass_program;
 ShaderProgram glass_blur_program;
+ShaderProgram postprocessing_program;
 
 // Geometries we use in this lecture
 Geometry geom_cube;
@@ -39,10 +40,14 @@ GLuint lenna_tex;
 std::vector<GLuint> Textures;
 
 // Framebuffer object for postprocessing
-int fbo_width, fbo_height;
-GLuint fbo_color_texture;
-GLuint fbo_depth_stencil_texture;
-GLuint fbo;
+int fbo1_width, fbo1_height;
+GLuint fbo1_color_texture;
+GLuint fbo1;
+
+// Framebuffer object for postprocessing
+int fbo2_width, fbo2_height;
+GLuint fbo2_color_texture;
+GLuint fbo2;
 
 // Data of our materials
 MaterialData_UBO RedMaterial_ubo;
@@ -88,8 +93,10 @@ GLuint RenderTimeQuery;
 void reload_shaders();
 void init_scene();
 void update_scene(int app_time_diff_ms);
-void render_to_stencil();
-void render_stuff(bool with_blur);
+void prepare_framebuffer(GLuint framebuffer);
+void render_glass();
+void render_stuff();
+void render_to_window(GLuint input_texture);
 void render_scene();
 void resize_fullscreen_textures();
 

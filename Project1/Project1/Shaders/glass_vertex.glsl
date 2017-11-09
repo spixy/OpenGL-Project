@@ -9,6 +9,7 @@ out VertexData
 {
 	vec3 position_ws;	// Position in world space
 	vec3 normal_ws;		// Normal in world space
+	vec2 tex_coord;
 } outData;
 
 // Data of the camera
@@ -43,4 +44,5 @@ void main()
 	outData.position_ws = vec3(model * position);
 	outData.normal_ws = normalize(model_it * normal);
 	gl_Position = projection * view * model * position;
+	outData.tex_coord = gl_Position.xy;
 }
