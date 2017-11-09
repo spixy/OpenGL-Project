@@ -70,6 +70,7 @@
     <None Include="Shaders\glass_vertex.glsl">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="Shaders\glass_fragment-blur.glsl" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Project1_main.h">

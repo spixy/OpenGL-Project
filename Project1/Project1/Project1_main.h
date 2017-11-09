@@ -14,6 +14,7 @@ using namespace PV227;
 ShaderProgram notexture_program;
 ShaderProgram texture_program;
 ShaderProgram glass_program;
+ShaderProgram glass_blur_program;
 
 // Geometries we use in this lecture
 Geometry geom_cube;
@@ -36,6 +37,12 @@ GLuint wood_tex;
 GLuint lenna_tex;
 // List of textures which we choose for our scene
 std::vector<GLuint> Textures;
+
+// Framebuffer object for postprocessing
+int fbo_width, fbo_height;
+GLuint fbo_color_texture;
+GLuint fbo_depth_stencil_texture;
+GLuint fbo;
 
 // Data of our materials
 MaterialData_UBO RedMaterial_ubo;
@@ -81,6 +88,8 @@ GLuint RenderTimeQuery;
 void reload_shaders();
 void init_scene();
 void update_scene(int app_time_diff_ms);
+void render_to_stencil();
+void render_stuff(bool with_blur);
 void render_scene();
 void resize_fullscreen_textures();
 

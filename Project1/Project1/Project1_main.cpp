@@ -50,6 +50,12 @@ void reload_shaders()
 	glass_program.AddFragmentShader("Shaders/glass_fragment.glsl");
 	glass_program.Link();
 
+	// Shader for rendering the glass with blurring
+	glass_blur_program.Init();
+	glass_blur_program.AddVertexShader("Shaders/glass_vertex.glsl");
+	glass_blur_program.AddFragmentShader("Shaders/glass_fragment-blur.glsl");
+	glass_blur_program.Link();
+
 	cout << "Shaders are reloaded" << endl;
 }
 
@@ -303,6 +309,30 @@ void init_scene()
 	geom_glass.DrawArraysCount = 4;
 	geom_glass.DrawElementsCount = 0;
 
+
+	//----------------------------------------------
+	//--  Prepare framebuffers
+
+	// Prepare FBO textures
+	glGenTextures(1, &fbo_color_texture);
+	glGenTextures(1, &fbo_depth_stencil_texture);
+	resize_fullscreen_textures();
+
+	// Set parameters of the color texture. We do not use the depth texture for rendering,
+	// so we do not set its parameters.
+	glBindTexture(GL_TEXTURE_2D, fbo_color_texture);
+	SetTexture2DParameters(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_LINEAR, GL_LINEAR);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	// Prepare FBO
+	glGenFramebuffers(1, &fbo);
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fbo_color_texture, 0);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, fbo_depth_stencil_texture, 0);
+	glDrawBuffers(1, DrawBuffersConstants);
+	CheckFramebufferStatus("Postprocessing");
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
 	//----------------------------------------------
 	//--  Miscellaneous
 
@@ -320,54 +350,18 @@ void update_scene(int app_time_diff_ms)
 	CameraData_ubo.UpdateOpenGLData();
 }
 
-/// Renders the whole frame
-void render_scene()
+void render_to_stencil()
 {
-	// Start measuring the elapsed time
-	glBeginQuery(GL_TIME_ELAPSED, RenderTimeQuery);
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 
-	//---------------------------------------------------
-	//--  Render the final scene into the main window  --
-
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	glViewport(0, 0, win_width, win_height);
-
-	// Clear the main window
+	// Set the clear values and clear the framebuffer
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 	glClearDepth(1.0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-	// Enable the depth test for scene rendering
-	glEnable(GL_DEPTH_TEST);
-
-	// Set the data of the camera and the lights
+	
+	// Set the data of the scene, common for all objects - the camera and the lights
 	CameraData_ubo.BindBuffer(DEFAULT_CAMERA_BINDING);
 	PhongLights_ubo.BindBuffer(DEFAULT_LIGHTS_BINDING);
-
-	// Render all objects in the scene
-	for (auto iter = ObjectsInScene.begin(); iter != ObjectsInScene.end(); ++iter)
-	{
-		if (iter->program && iter->program->IsValid())
-			iter->program->Use();
-		else continue;		// The program is not ready, skip this object and render another one
-
-		// Set the data of the material
-		if (iter->material_ubo)
-			iter->material_ubo->BindBuffer(DEFAULT_MATERIAL_BINDING);
-		// Set the data of the object
-		if (iter->model_ubo)
-			iter->model_ubo->BindBuffer(DEFAULT_OBJECT_BINDING);
-
-		// Set the texture
-		glActiveTexture(GL_TEXTURE0);	glBindTexture(GL_TEXTURE_2D, iter->texture);
-
-		// Render the object
-		if (iter->geometry)
-		{
-			iter->geometry->BindVAO();
-			iter->geometry->Draw();
-		}
-	}
 
 	// Render the glass
 	if (glass_program.IsValid())
@@ -381,6 +375,81 @@ void render_scene()
 		geom_glass.BindVAO();
 		geom_glass.Draw();
 	}
+}
+
+void render_stuff(bool with_blur)
+{
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	// Set the clear values and clear the framebuffer
+	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+	glClearDepth(1.0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	if (with_blur)
+	{
+		glEnable(GL_STENCIL_TEST);
+		//glStencilFunc(GL_GREATER, 0, 0xFF);
+	}
+
+	// Set the data of the camera and the lights
+	CameraData_ubo.BindBuffer(DEFAULT_CAMERA_BINDING);
+	PhongLights_ubo.BindBuffer(DEFAULT_LIGHTS_BINDING);
+
+	// Render all objects in the scene
+	for (auto iter = ObjectsInScene.begin(); iter != ObjectsInScene.end(); ++iter)
+	{
+		if (iter->program && iter->program->IsValid())
+			iter->program->Use();
+		else continue;		// The program is not ready, skip this object and render another one
+
+							// Set the data of the material
+		if (iter->material_ubo)
+			iter->material_ubo->BindBuffer(DEFAULT_MATERIAL_BINDING);
+		// Set the data of the object
+		if (iter->model_ubo)
+			iter->model_ubo->BindBuffer(DEFAULT_OBJECT_BINDING);
+
+		// Set the texture
+		glActiveTexture(GL_TEXTURE0);	glBindTexture(GL_TEXTURE_2D, iter->texture);
+
+		if (with_blur)
+		{
+			glActiveTexture(GL_TEXTURE1);	glBindTexture(GL_TEXTURE_2D, fbo_depth_stencil_texture);
+		}
+
+		iter->program->Uniform1i("blur_enabled", with_blur ? 1 : 0);
+
+		// Render the object
+		if (iter->geometry)
+		{
+			iter->geometry->BindVAO();
+			iter->geometry->Draw();
+		}
+	}
+
+	if (with_blur)
+	{
+		glDisable(GL_STENCIL_TEST);
+	}
+}
+
+/// Renders the whole frame
+void render_scene()
+{
+	// Start measuring the elapsed time
+	glBeginQuery(GL_TIME_ELAPSED, RenderTimeQuery);
+
+	//---------------------------------------------------
+	//--  Render the final scene into the main window  --
+
+	glEnable(GL_DEPTH_TEST);
+
+	render_to_stencil();
+
+	render_stuff(false);
+
+	render_stuff(true);
 
 	//----------------------------------------------
 
@@ -401,7 +470,14 @@ void render_scene()
 
 void resize_fullscreen_textures()
 {
-	// Resize FBO textures to match the size of the window
+	fbo_width = win_width;
+	fbo_height = win_height;
+
+	glBindTexture(GL_TEXTURE_2D, fbo_color_texture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, fbo_width, fbo_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+	glBindTexture(GL_TEXTURE_2D, fbo_depth_stencil_texture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, fbo_width, fbo_height, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, nullptr);
+	glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 //-------------------
