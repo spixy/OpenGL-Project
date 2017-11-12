@@ -66,6 +66,7 @@ void EvaluatePhongLight(in PhongLight light, out vec3 amb, out vec3 dif, out vec
 void main()
 {
 	vec3 tex_color = texture(object_tex, inData.tex_coord).rgb;
+
 	// Compute the lighting
 	vec3 N = normalize(inData.normal_ws);
 	vec3 Eye = normalize(eye_position - inData.position_ws);

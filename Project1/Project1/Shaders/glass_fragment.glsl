@@ -23,7 +23,7 @@ layout (std140, binding = 0) uniform CameraData
 };
 
 // Data of the object
-uniform float glass_transparency;
+uniform float alpha;
 
 layout (binding = 0) uniform sampler2D tex;
 
@@ -65,7 +65,5 @@ layout (std140, binding = 1) uniform PhongLightsData
 
 void main()
 {
-	vec4 tex_color = texture(tex, inData.tex_coord);
-	vec4 my_color = vec4(glass_transparency, glass_transparency, glass_transparency, glass_transparency);
-	final_color = mix(tex_color, my_color, glass_transparency);
+	final_color = vec4(1.0, 1.0, 1.0, alpha);
 }

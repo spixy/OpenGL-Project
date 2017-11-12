@@ -31,18 +31,15 @@ layout (std140, binding = 2) uniform ModelData
 	mat3 model_it;		// Inverse of the transpose of the top-left part 3x3 of the model matrix
 };
 
-const vec2 tex_coords[3] = vec2[3] (
-	vec2(0.0, 0.0),
-	vec2(2.0, 0.0),
-	vec2(0.0, 2.0)
-);
-
 //-----------------------------------------------------------------------
 
 void main()
 {
 	outData.position_ws = vec3(model * position);
 	outData.normal_ws = normalize(model_it * normal);
+
+	vec4 pos_cs = projection * view * vec4(outData.position_ws, 1.0);
+	outData.tex_coord = pos_cs.xy / pos_cs.w * 0.5 + 0.5;
+	
 	gl_Position = projection * view * model * position;
-	outData.tex_coord = gl_Position.xy;
 }

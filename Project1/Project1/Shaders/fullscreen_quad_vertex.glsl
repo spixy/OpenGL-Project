@@ -14,7 +14,6 @@ out VertexData
 
 void main()
 {
-	// gl_VertexID holds the index of the vertex that is being processed
 	vec2 tex_coord = tex_coords[gl_VertexID];
 
 	outData.tex_coord = tex_coord;

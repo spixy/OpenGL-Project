@@ -50,17 +50,11 @@ void reload_shaders()
 	glass_program.AddFragmentShader("Shaders/glass_fragment.glsl");
 	glass_program.Link();
 
-	// Shader for rendering the glass with blurring
-	glass_blur_program.Init();
-	glass_blur_program.AddVertexShader("Shaders/glass_vertex.glsl");
-	glass_blur_program.AddFragmentShader("Shaders/glass_fragment-blur.glsl");
-	glass_blur_program.Link();
-
 	// Postprocessing program
-	postprocessing_program.Init();
-	postprocessing_program.AddVertexShader("Shaders/fullscreen_quad_vertex.glsl");
-	postprocessing_program.AddFragmentShader("Shaders/display_texture_fragment.glsl");
-	postprocessing_program.Link();
+	fullscreen_program.Init();
+	fullscreen_program.AddVertexShader("Shaders/fullscreen_quad_vertex.glsl");
+	fullscreen_program.AddFragmentShader("Shaders/display_texture_fragment.glsl");
+	fullscreen_program.Link();
 
 	cout << "Shaders are reloaded" << endl;
 }
@@ -315,39 +309,29 @@ void init_scene()
 	geom_glass.DrawArraysCount = 4;
 	geom_glass.DrawElementsCount = 0;
 
-
 	//----------------------------------------------
 	//--  Prepare framebuffers
 
 	// Prepare FBO textures
 	glGenTextures(1, &fbo1_color_texture);
-	glGenTextures(1, &fbo2_color_texture);
+	glGenTextures(1, &fbo1_depth_texture);
 	resize_fullscreen_textures();
 
-	// Set parameters of the color texture. We do not use the depth texture for rendering,
-	// so we do not set its parameters.
 	glBindTexture(GL_TEXTURE_2D, fbo1_color_texture);
-	SetTexture2DParameters(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_LINEAR, GL_LINEAR);
-	glBindTexture(GL_TEXTURE_2D, 0);
+	SetTexture2DParameters(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_NEAREST, GL_NEAREST);
 
-	glBindTexture(GL_TEXTURE_2D, fbo2_color_texture);
-	SetTexture2DParameters(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_LINEAR, GL_LINEAR);
+	glBindTexture(GL_TEXTURE_2D, fbo1_depth_texture);
+	SetTexture2DParameters(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_NEAREST, GL_NEAREST);
+
 	glBindTexture(GL_TEXTURE_2D, 0);
 
 	// Prepare FBO
 	glGenFramebuffers(1, &fbo1);
 	glBindFramebuffer(GL_FRAMEBUFFER, fbo1);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fbo1_color_texture, 0);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, fbo1_depth_texture, 0);
 	glDrawBuffers(1, DrawBuffersConstants);
 	CheckFramebufferStatus("FBO 1");
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-	// Prepare FBO
-	glGenFramebuffers(1, &fbo2);
-	glBindFramebuffer(GL_FRAMEBUFFER, fbo2);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fbo2_color_texture, 0);
-	glDrawBuffers(1, DrawBuffersConstants);
-	CheckFramebufferStatus("FBO 2");
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 	//----------------------------------------------
@@ -355,6 +339,12 @@ void init_scene()
 
 	// Create the query object
 	glGenQueries(1, &RenderTimeQuery);
+}
+
+float compute_gauss_value(int index)
+{
+	int v = (index + 1);
+	return v * v;
 }
 
 /// Updates the scene: performs animations, updates the data of the buffers, etc.
@@ -365,14 +355,51 @@ void update_scene(int app_time_diff_ms)
 		glm::perspective(glm::radians(45.0f), float(win_width) / float(win_height), 0.5f, 1000.0f));
 	CameraData_ubo.SetCamera(the_camera);
 	CameraData_ubo.UpdateOpenGLData();
+
+	// Gauss values
+	int mid = blur_kernel_size / 2;
+	gauss_sum = 0.0;
+	if (blur_kernel_size % 2 == 0)
+	{
+		for (int i = 0; i < mid; ++i)
+		{
+			float value = compute_gauss_value(i);
+			gauss_array[i] = value;
+			gauss_sum += value;
+		}
+		for (int i = mid + 1; i < blur_kernel_size; ++i)
+		{
+			int index = blur_kernel_size - i - 1;
+			float value = gauss_array[index];
+			gauss_array[i] = value;
+			gauss_sum += value;
+		}
+	}
+	else
+	{
+		for (int i = 0; i < mid; ++i)
+		{
+			float value = compute_gauss_value(i);
+			gauss_array[i] = value;
+			gauss_sum += value;
+		}
+		float value = compute_gauss_value(mid);
+		gauss_array[mid] = value;
+		gauss_sum += value;
+		for (int i = mid + 1; i < blur_kernel_size; ++i)
+		{
+			int index = blur_kernel_size - i - 1;
+			float value = gauss_array[index];
+			gauss_array[i] = value;
+			gauss_sum += value;
+		}
+	}
+
+	gauss_sum *= gauss_sum;
 }
 
 void render_stuff()
 {
-	// Set the data of the camera and the lights
-	CameraData_ubo.BindBuffer(DEFAULT_CAMERA_BINDING);
-	PhongLights_ubo.BindBuffer(DEFAULT_LIGHTS_BINDING);
-
 	// Render all objects in the scene
 	for (auto iter = ObjectsInScene.begin(); iter != ObjectsInScene.end(); ++iter)
 	{
@@ -380,7 +407,7 @@ void render_stuff()
 			iter->program->Use();
 		else continue;		// The program is not ready, skip this object and render another one
 
-							// Set the data of the material
+		// Set the data of the material
 		if (iter->material_ubo)
 			iter->material_ubo->BindBuffer(DEFAULT_MATERIAL_BINDING);
 		// Set the data of the object
@@ -401,15 +428,11 @@ void render_stuff()
 
 void render_glass()
 {
-	// Set the data of the scene, common for all objects - the camera and the lights
-	CameraData_ubo.BindBuffer(DEFAULT_CAMERA_BINDING);
-	PhongLights_ubo.BindBuffer(DEFAULT_LIGHTS_BINDING);
-
 	// Render the glass
 	if (glass_program.IsValid())
 	{
 		glass_program.Use();
-		glass_program.Uniform1f("glass_transparency", glass_transparency);
+		glass_program.Uniform1f("alpha", 1.0 - glass_transparency);
 
 		GlassMaterial_ubo.BindBuffer(DEFAULT_MATERIAL_BINDING);
 		GlassModel_ubo.BindBuffer(DEFAULT_OBJECT_BINDING);
@@ -419,21 +442,36 @@ void render_glass()
 	}
 }
 
-void render_to_window(GLuint input_texture)
+void enable_draw_to_stencil()
 {
-	if (postprocessing_program.IsValid())
+	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+	glDepthMask(GL_FALSE);
+	glStencilFunc(GL_NEVER, 1, 0xFF);
+	glStencilOp(GL_REPLACE, GL_KEEP, GL_KEEP);
+	glStencilMask(0xFF);
+	glClear(GL_STENCIL_BUFFER_BIT);
+}
+
+void disable_draw_to_stencil()
+{
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	glDepthMask(GL_TRUE);
+	glStencilMask(0x00);
+}
+
+void fullscreen_render(GLuint input_texture)
+{
+	if (fullscreen_program.IsValid())
 	{
-		glDisable(GL_DEPTH_TEST);
-
-		postprocessing_program.Use();
-
-		// Bind all textures that we need
 		glActiveTexture(GL_TEXTURE0);	glBindTexture(GL_TEXTURE_2D, input_texture);
+
+		fullscreen_program.Use();
+		fullscreen_program.Uniform1i("blur_kernel_size", blur_kernel_size);
+		fullscreen_program.Uniform1fv("gauss_array", 128, gauss_array);
+		fullscreen_program.Uniform1f("gauss_sum", gauss_sum);
 
 		geom_fullscreen_quad.BindVAO();
 		geom_fullscreen_quad.Draw();
-
-		glUseProgram(0);
 	}
 }
 
@@ -443,6 +481,19 @@ void prepare_framebuffer(GLuint framebuffer)
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 	glClearDepth(1.0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+	glClearDepth(1.0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+}
+
+void copy_color_buffer()
+{
+	glBindFramebufferEXT(GL_READ_FRAMEBUFFER_EXT, fbo1);
+	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER_EXT, 0);
+	glBlitFramebufferEXT(0, 0, win_width, win_height,
+		0, 0, win_width, win_height,
+		GL_COLOR_BUFFER_BIT, GL_NEAREST);
 }
 
 /// Renders the whole frame
@@ -454,23 +505,40 @@ void render_scene()
 	//---------------------------------------------------
 	//--  Render the final scene into the main window  --
 
-	{
-		prepare_framebuffer(0);
-		render_stuff();
-	}
+	glEnable(GL_DEPTH_TEST);
 
-	/*{
-		glEnable(GL_DEPTH_TEST);
+	// Set the data of the camera and the lights
+	CameraData_ubo.BindBuffer(DEFAULT_CAMERA_BINDING);
+	PhongLights_ubo.BindBuffer(DEFAULT_LIGHTS_BINDING);
 
-		prepare_framebuffer(fbo1);
-		render_stuff();
+	// predmety sa vyrenderuju do FBO1
+	prepare_framebuffer(fbo1);
+	render_stuff();
 
-		//prepare_framebuffer(fbo2);
-		//render_glass();
+	// prepnem FB
+	prepare_framebuffer(0);
 
-		prepare_framebuffer(0);
-		render_to_window(fbo1_color_texture);
-	}*/
+	// kopia color bufferu z FBO1 do 0
+	copy_color_buffer();
+
+	// sklo do stencil bufferu
+	glEnable(GL_STENCIL_TEST);
+	enable_draw_to_stencil();
+	render_glass();
+	disable_draw_to_stencil();
+
+	// blur fullscreenu podla stencil buffru
+	glStencilFunc(GL_EQUAL, 1, 0xFF);
+	glDisable(GL_DEPTH_TEST);
+	fullscreen_render(fbo1_color_texture);
+	glEnable(GL_DEPTH_TEST);
+	glDisable(GL_STENCIL_TEST);
+
+	// render skla
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	render_glass();
+	glDisable(GL_BLEND);
 
 	//----------------------------------------------
 
@@ -491,15 +559,12 @@ void render_scene()
 
 void resize_fullscreen_textures()
 {
-	fbo1_width = fbo2_width = win_width;
-	fbo1_height = fbo2_height = win_height;
-
 	glBindTexture(GL_TEXTURE_2D, fbo1_color_texture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, fbo1_width, fbo1_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-	glBindTexture(GL_TEXTURE_2D, 0);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, win_width, win_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
 
-	glBindTexture(GL_TEXTURE_2D, fbo2_color_texture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, fbo2_width, fbo2_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+	glBindTexture(GL_TEXTURE_2D, fbo1_depth_texture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, win_width, win_height, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, nullptr);
+
 	glBindTexture(GL_TEXTURE_2D, 0);
 }
 

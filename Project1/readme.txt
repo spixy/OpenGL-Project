@@ -1,4 +1,4 @@
-Nefunguje to, ale odovzdal som to kedze som tomu venoval dost casu.
+Nefunguje to, ale odovzdal som to kezde som tomu venoval dost casu.
 Vystup z konzole u mna doma (mam najnovsi AMD driver):
 
 Vendor   : ATI Technologies Inc.
