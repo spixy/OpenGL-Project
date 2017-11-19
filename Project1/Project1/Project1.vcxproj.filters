@@ -61,9 +61,6 @@
     <None Include="Shaders\texture_fragment.glsl">
       <Filter>Shaders</Filter>
     </None>
-    <None Include="Shaders\glass_fragment.glsl">
-      <Filter>Shaders</Filter>
-    </None>
     <None Include="Shaders\glass_vertex.glsl">
       <Filter>Shaders</Filter>
     </None>
@@ -71,7 +68,19 @@
     <None Include="Shaders\fullscreen_quad_vertex.glsl">
       <Filter>Shaders</Filter>
     </None>
-    <None Include="Shaders\display_texture_fragment.glsl">
+    <None Include="Shaders\glass_tex_fragment.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\glass_notex_fragment.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\blur_horizontal_fragment.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\blur_vertical_fragment.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\fullscreen_quad_fragment.glsl">
       <Filter>Shaders</Filter>
     </None>
   </ItemGroup>

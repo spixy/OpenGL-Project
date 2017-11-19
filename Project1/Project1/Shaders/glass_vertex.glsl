@@ -3,14 +3,7 @@
 // Input variables
 layout (location = 0) in vec4 position;
 layout (location = 1) in vec3 normal;
-
-// Output variables
-out VertexData
-{
-	vec3 position_ws;	// Position in world space
-	vec3 normal_ws;		// Normal in world space
-	vec2 tex_coord;
-} outData;
+layout (location = 2) in vec2 tex_coord;
 
 // Data of the camera
 layout (std140, binding = 0) uniform CameraData
@@ -35,11 +28,5 @@ layout (std140, binding = 2) uniform ModelData
 
 void main()
 {
-	outData.position_ws = vec3(model * position);
-	outData.normal_ws = normalize(model_it * normal);
-
-	vec4 pos_cs = projection * view * vec4(outData.position_ws, 1.0);
-	outData.tex_coord = pos_cs.xy / pos_cs.w * 0.5 + 0.5;
-	
 	gl_Position = projection * view * model * position;
 }

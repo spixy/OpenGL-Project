@@ -124,10 +124,13 @@
     <None Include="..\..\inlines\tangentteapotpatch.inl" />
     <None Include="..\..\inlines\tangenttorus.inl" />
     <None Include="..\..\inlines\tangentteapot.inl" />
-    <None Include="Shaders\display_texture_fragment.glsl" />
+    <None Include="Shaders\blur_horizontal_fragment.glsl" />
+    <None Include="Shaders\blur_vertical_fragment.glsl" />
+    <None Include="Shaders\fullscreen_quad_fragment.glsl" />
     <None Include="Shaders\fullscreen_quad_vertex.glsl" />
     <None Include="Shaders\glass_fragment-blur.glsl" />
-    <None Include="Shaders\glass_fragment.glsl" />
+    <None Include="Shaders\glass_notex_fragment.glsl" />
+    <None Include="Shaders\glass_tex_fragment.glsl" />
     <None Include="Shaders\glass_vertex.glsl" />
     <None Include="Shaders\notexture_fragment.glsl" />
     <None Include="Shaders\notexture_vertex.glsl" />

@@ -44,16 +44,32 @@ void reload_shaders()
 	texture_program.AddFragmentShader("Shaders/texture_fragment.glsl");
 	texture_program.Link();
 
-	// Shader for rendering the glass with blurring
-	glass_program.Init();
-	glass_program.AddVertexShader("Shaders/glass_vertex.glsl");
-	glass_program.AddFragmentShader("Shaders/glass_fragment.glsl");
-	glass_program.Link();
+	// Shader for rendering the glass
+	glass_tex_program.Init();
+	glass_tex_program.AddVertexShader("Shaders/texture_vertex.glsl");
+	glass_tex_program.AddFragmentShader("Shaders/glass_tex_fragment.glsl");
+	glass_tex_program.Link();
 
-	// Postprocessing program
+	// Shader for rendering the glass
+	glass_notex_program.Init();
+	glass_notex_program.AddVertexShader("Shaders/glass_vertex.glsl");
+	glass_notex_program.AddFragmentShader("Shaders/glass_notex_fragment.glsl");
+	glass_notex_program.Link();
+
+	// Postprocessing programs
+	fullscreen_horizontal_program.Init();
+	fullscreen_horizontal_program.AddVertexShader("Shaders/fullscreen_quad_vertex.glsl");
+	fullscreen_horizontal_program.AddFragmentShader("Shaders/blur_horizontal_fragment.glsl");
+	fullscreen_horizontal_program.Link();
+
+	fullscreen_vertical_program.Init();
+	fullscreen_vertical_program.AddVertexShader("Shaders/fullscreen_quad_vertex.glsl");
+	fullscreen_vertical_program.AddFragmentShader("Shaders/blur_vertical_fragment.glsl");
+	fullscreen_vertical_program.Link();
+
 	fullscreen_program.Init();
 	fullscreen_program.AddVertexShader("Shaders/fullscreen_quad_vertex.glsl");
-	fullscreen_program.AddFragmentShader("Shaders/display_texture_fragment.glsl");
+	fullscreen_program.AddFragmentShader("Shaders/fullscreen_quad_fragment.glsl");
 	fullscreen_program.Link();
 
 	cout << "Shaders are reloaded" << endl;
@@ -168,7 +184,12 @@ void init_scene()
 	glBindTexture(GL_TEXTURE_2D, lenna_tex);
 	SetTexture2DParameters(GL_REPEAT, GL_REPEAT, GL_LINEAR, GL_LINEAR);
 	glBindTexture(GL_TEXTURE_2D, 0);
-	
+
+	mask_tex = CreateAndLoadTexture2D(L"../../textures/Mask.png");
+	glBindTexture(GL_TEXTURE_2D, mask_tex);
+	SetTexture2DParameters(GL_REPEAT, GL_REPEAT, GL_LINEAR, GL_LINEAR);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
 	// Add the textures into our list of textures
 	Textures.push_back(wood_tex);
 	Textures.push_back(lenna_tex);
@@ -325,13 +346,14 @@ void init_scene()
 
 	glBindTexture(GL_TEXTURE_2D, 0);
 
-	// Prepare FBO
+	// Prepare FBOs
 	glGenFramebuffers(1, &fbo1);
 	glBindFramebuffer(GL_FRAMEBUFFER, fbo1);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fbo1_color_texture, 0);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, fbo1_depth_texture, 0);
 	glDrawBuffers(1, DrawBuffersConstants);
 	CheckFramebufferStatus("FBO 1");
+
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 	//----------------------------------------------
@@ -395,7 +417,7 @@ void update_scene(int app_time_diff_ms)
 		}
 	}
 
-	gauss_sum *= gauss_sum;
+	//gauss_sum *= gauss_sum;
 }
 
 void render_stuff()
@@ -426,13 +448,23 @@ void render_stuff()
 	}
 }
 
-void render_glass()
+void render_glass(bool with_tex)
 {
+	ShaderProgram glass_program = with_tex ? glass_tex_program : glass_notex_program;
+
 	// Render the glass
 	if (glass_program.IsValid())
 	{
 		glass_program.Use();
-		glass_program.Uniform1f("alpha", 1.0 - glass_transparency);
+
+		if (with_tex)
+		{
+			glActiveTexture(GL_TEXTURE0);	glBindTexture(GL_TEXTURE_2D, mask_tex);
+		}
+		else
+		{
+			glass_program.Uniform1f("alpha", 1.0 - glass_transparency);
+		}
 
 		GlassMaterial_ubo.BindBuffer(DEFAULT_MATERIAL_BINDING);
 		GlassModel_ubo.BindBuffer(DEFAULT_OBJECT_BINDING);
@@ -459,16 +491,16 @@ void disable_draw_to_stencil()
 	glStencilMask(0x00);
 }
 
-void fullscreen_render(GLuint input_texture)
+void fullscreen_render(ShaderProgram program, GLuint input_texture)
 {
-	if (fullscreen_program.IsValid())
+	if (program.IsValid())
 	{
 		glActiveTexture(GL_TEXTURE0);	glBindTexture(GL_TEXTURE_2D, input_texture);
 
-		fullscreen_program.Use();
-		fullscreen_program.Uniform1i("blur_kernel_size", blur_kernel_size);
-		fullscreen_program.Uniform1fv("gauss_array", 128, gauss_array);
-		fullscreen_program.Uniform1f("gauss_sum", gauss_sum);
+		program.Use();
+		program.Uniform1i("blur_kernel_size", blur_kernel_size);
+		program.Uniform1fv("gauss_array", 128, gauss_array);
+		program.Uniform1f("gauss_sum", gauss_sum);
 
 		geom_fullscreen_quad.BindVAO();
 		geom_fullscreen_quad.Draw();
@@ -480,20 +512,16 @@ void prepare_framebuffer(GLuint framebuffer)
 	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 	glClearDepth(1.0);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-	glClearDepth(1.0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 }
 
-void copy_color_buffer()
+void copy_color_buffer(GLuint from, GLuint to)
 {
-	glBindFramebufferEXT(GL_READ_FRAMEBUFFER_EXT, fbo1);
-	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER_EXT, 0);
+	glBindFramebufferEXT(GL_READ_FRAMEBUFFER_EXT, from);
+	glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER_EXT, to);
 	glBlitFramebufferEXT(0, 0, win_width, win_height,
-		0, 0, win_width, win_height,
-		GL_COLOR_BUFFER_BIT, GL_NEAREST);
+						 0, 0, win_width, win_height,
+						 GL_COLOR_BUFFER_BIT, GL_NEAREST);
 }
 
 /// Renders the whole frame
@@ -517,27 +545,34 @@ void render_scene()
 
 	// prepnem FB
 	prepare_framebuffer(0);
-
-	// kopia color bufferu z FBO1 do 0
-	copy_color_buffer();
+	copy_color_buffer(fbo1, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 	// sklo do stencil bufferu
 	glEnable(GL_STENCIL_TEST);
 	enable_draw_to_stencil();
-	render_glass();
+	render_glass(true);
 	disable_draw_to_stencil();
 
 	// blur fullscreenu podla stencil buffru
 	glStencilFunc(GL_EQUAL, 1, 0xFF);
 	glDisable(GL_DEPTH_TEST);
-	fullscreen_render(fbo1_color_texture);
+
+	fullscreen_render(fullscreen_horizontal_program, fbo1_color_texture);
+
+	// kopia color bufferu z 0 do FBO1
+	copy_color_buffer(0, fbo1);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	fullscreen_render(fullscreen_vertical_program, fbo1_color_texture);
+
 	glEnable(GL_DEPTH_TEST);
 	glDisable(GL_STENCIL_TEST);
 
 	// render skla
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	render_glass();
+	render_glass(false);
 	glDisable(GL_BLEND);
 
 	//----------------------------------------------

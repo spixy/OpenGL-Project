@@ -18,15 +18,15 @@ void main()
 {
 	// Gaussian blur
 	vec2 texel_size = 1.0 / textureSize(tex, 0);
-	vec2 half_size = vec2(blur_kernel_size / 2);
 	vec3 sum = vec3(0.0, 0.0, 0.0);
-	for (int x = 0; x < blur_kernel_size; ++x)
+	int offset_half = blur_kernel_size / 2;
+
 	for (int y = 0; y < blur_kernel_size; ++y)
 	{
 		// Offset from the center texel
-		vec2 offset = texel_size * (vec2(x, y) - half_size);
+		vec2 offset = vec2(texel_size.x * (y - offset_half), 0.0);
 		// Adding weighted value
-		sum += (gauss_array[x] * gauss_array[y]) * textureLod(tex, inData.tex_coord + offset, 0).xyz;
+		sum += gauss_array[y] * textureLod(tex, inData.tex_coord + offset, 0).xyz;
 	}
 	final_color = vec4(sum / gauss_sum, 0.0);
 }

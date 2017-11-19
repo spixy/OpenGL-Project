@@ -13,8 +13,11 @@ using namespace PV227;
 // Shader programs
 ShaderProgram notexture_program;
 ShaderProgram texture_program;
-ShaderProgram glass_program;
+ShaderProgram glass_tex_program;
+ShaderProgram glass_notex_program;
 ShaderProgram fullscreen_program;
+ShaderProgram fullscreen_horizontal_program;
+ShaderProgram fullscreen_vertical_program;
 
 // Geometries we use in this lecture
 Geometry geom_cube;
@@ -35,10 +38,11 @@ SimpleCamera the_camera;
 // Textures
 GLuint wood_tex;
 GLuint lenna_tex;
+GLuint mask_tex;
 // List of textures which we choose for our scene
 std::vector<GLuint> Textures;
 
-// Framebuffer object
+// Framebuffer objects
 GLuint fbo1_color_texture;
 GLuint fbo1_depth_texture;
 GLuint fbo1;
@@ -94,10 +98,10 @@ void update_scene(int app_time_diff_ms);
 void prepare_framebuffer(GLuint framebuffer);
 void enable_draw_to_stencil();
 void disable_draw_to_stencil();
-void copy_color_buffer();
-void render_glass();
+void copy_color_buffer(GLuint from, GLuint to);
+void render_glass(bool with_tex);
 void render_stuff();
-void fullscreen_render(GLuint input_texture);
+void fullscreen_render(ShaderProgram program, GLuint input_texture);
 void render_scene();
 void resize_fullscreen_textures();
 

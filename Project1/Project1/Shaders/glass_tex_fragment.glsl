@@ -3,8 +3,8 @@
 // Input variables
 in VertexData
 {
-	vec3 position_ws;
-	vec3 normal_ws;
+	vec3 position_ws;	// Position in world space
+	vec3 normal_ws;		// Normal in world space
 	vec2 tex_coord;
 } inData;
 
@@ -23,8 +23,6 @@ layout (std140, binding = 0) uniform CameraData
 };
 
 // Data of the object
-uniform float alpha;
-
 layout (binding = 0) uniform sampler2D tex;
 
 // Data of the material
@@ -65,5 +63,10 @@ layout (std140, binding = 1) uniform PhongLightsData
 
 void main()
 {
-	final_color = vec4(1.0, 1.0, 1.0, alpha);
+	final_color = texture(tex, inData.tex_coord);
+
+	if (final_color.x == 0.0)
+	{
+		discard;
+	}
 }
