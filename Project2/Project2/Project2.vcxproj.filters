@@ -61,6 +61,33 @@
     <None Include="Shaders\texture_fragment.glsl">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="Shaders\evaluate_lighting_fragment.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\evaluate_ssao_fragment.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\fullscreen_quad_vertex.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\display_texture_fragment.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\evaluate_nothing_fragment.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\display_shadow_texture_fragment.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\nolit_fragment.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\nolit_vertex.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\nothing_fragment.glsl">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Project2_main.h">

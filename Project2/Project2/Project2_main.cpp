@@ -33,6 +33,41 @@ void reload_shaders()
 	texture_program.AddFragmentShader("Shaders/texture_fragment.glsl");
 	texture_program.Link();
 
+	// Program for displaying a texture on the screen
+	display_texture_program.Init();
+	display_texture_program.AddVertexShader("Shaders/fullscreen_quad_vertex.glsl");
+	display_texture_program.AddFragmentShader("Shaders/display_texture_fragment.glsl");
+	display_texture_program.Link();
+
+	// Program for evaluating the G-buffer using a screen quad
+	evaluate_lighting_program.Init();
+	evaluate_lighting_program.AddVertexShader("Shaders/fullscreen_quad_vertex.glsl");
+	evaluate_lighting_program.AddFragmentShader("Shaders/evaluate_lighting_fragment.glsl");
+	evaluate_lighting_program.Link();
+
+	// Program for evaluating the G-buffer using a screen quad
+	evaluate_nothing_program.Init();
+	evaluate_nothing_program.AddVertexShader("Shaders/fullscreen_quad_vertex.glsl");
+	evaluate_nothing_program.AddFragmentShader("Shaders/evaluate_nothing_fragment.glsl");
+	evaluate_nothing_program.Link();
+
+	evaluate_ssao_program.Init();
+	evaluate_ssao_program.AddVertexShader("Shaders/fullscreen_quad_vertex.glsl");
+	evaluate_ssao_program.AddFragmentShader("Shaders/evaluate_ssao_fragment.glsl");
+	evaluate_ssao_program.Link();
+
+	// Program for displaying shadow maps
+	display_shadow_texture_program.Init();
+	display_shadow_texture_program.AddVertexShader("Shaders/fullscreen_quad_vertex.glsl");
+	display_shadow_texture_program.AddFragmentShader("Shaders/display_shadow_texture_fragment.glsl");
+	display_shadow_texture_program.Link();
+
+	// Program for generating shadow maps
+	gen_shadow_program.Init();
+	gen_shadow_program.AddVertexShader("Shaders/nolit_vertex.glsl");
+	gen_shadow_program.AddFragmentShader("Shaders/nothing_fragment.glsl");
+	gen_shadow_program.Link();
+
 	cout << "Shaders are reloaded" << endl;
 }
 
@@ -54,8 +89,7 @@ void init_scene()
 	
 	PhongLights_ubo.Init();
 	PhongLights_ubo.SetGlobalAmbient(glm::vec3(0.0f));
-	PhongLights_ubo.PhongLights.push_back(
-		PhongLight::CreateDirectionalLight(glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.7f), glm::vec3(0.3f), glm::vec3(0.0f)));
+	PhongLights_ubo.PhongLights.push_back(PhongLight::CreateDirectionalLight(glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.7f), glm::vec3(0.3f), glm::vec3(0.0f)));
 	PhongLights_ubo.UpdateOpenGLData();
 
 	//----------------------------------------------
@@ -105,6 +139,13 @@ void init_scene()
 	the_camera.SetCamera(1.25f, -0.5f, 40.0f);
 	CameraData_ubo.Init();
 
+	LightCameraProjection = glm::perspective(glm::radians(80.0f), 1.0f, 2.0f, 30.0f);
+	LightCameraView = glm::mat4(1.0f);
+	LightCameraData_ubo.Init();
+	LightCameraData_ubo.SetProjection(LightCameraProjection);
+	LightCameraData_ubo.SetCamera(LightCameraView);
+	LightCameraData_ubo.UpdateOpenGLData();
+
 	//----------------------------------------------
 	//--  Prepare geometries
 
@@ -114,6 +155,7 @@ void init_scene()
 	geom_cylinder = CreateCylinder();
 	geom_capsule = CreateCapsule();
 	geom_teapot = CreateTeapot();
+	geom_fullscreen_quad = CreateFullscreenQuad();
 
 	// Add the geometries into our list of geometries. Also add matrices that describe
 	// how to transform the objects so that they "sit" on xz plane.
@@ -148,6 +190,13 @@ void init_scene()
 	// Add the textures into our list of textures
 	Textures.push_back(wood_tex);
 	Textures.push_back(lenna_tex);
+
+	// Create the shadow texture, allocate its memory, and set its basic parameters
+	glGenTextures(1, &ShadowTexture);
+	glBindTexture(GL_TEXTURE_2D, ShadowTexture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, ShadowTexSize, ShadowTexSize, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, nullptr);
+	SetTexture2DParameters(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_LINEAR, GL_LINEAR);
+	glBindTexture(GL_TEXTURE_2D, 0);
 
 	//----------------------------------------------
 	//--  Prepare objects in the scene
@@ -219,6 +268,107 @@ void init_scene()
 	floor_scene_object.texture = 0;
 	ObjectsInScene.push_back(floor_scene_object);
 
+	//----------------------------------------------
+	//--  Compute the random positions of samples for SSAO
+
+	std::vector<glm::vec4> SSAOSamples(64);
+	for (size_t i = 0; i < SSAOSamples.size(); i++)
+	{
+		// Create a uniform point on a hemisphere (unit sphere, cut by xy plane, hemisphere in +z direction)
+		float alpha = float(rand()) / float(RAND_MAX) * 2.0f * float(M_PI);
+		float beta = asinf(float(rand()) / float(RAND_MAX));
+		glm::vec3 point_on_hemisphere = glm::vec3(cosf(alpha) * cosf(beta), sinf(alpha) * cosf(beta), sinf(beta));
+
+		// Place the point on the hemisphere inside the hemisphere, so that the points in the hemisphere were uniformly
+		// distributed in the hemisphere. This is true when the distance of the points from the center of the hemisphere
+		// is the cube root of a uniformly distributed random number from interval [0,1].
+		float radius = powf(float(rand()) / float(RAND_MAX), 1.0f / 3.0f);
+		glm::vec3 point_in_hemisphere = point_on_hemisphere * radius;
+
+		SSAOSamples[i] = glm::vec4(point_in_hemisphere, 0.0f);
+	}
+	// Create a UBO for these random positions
+	glGenBuffers(1, &SSAO_Samples_UBO);
+	glBindBuffer(GL_UNIFORM_BUFFER, SSAO_Samples_UBO);
+	glBufferData(GL_UNIFORM_BUFFER, sizeof(float) * 4 * SSAOSamples.size(), SSAOSamples.data(), GL_STATIC_DRAW);
+	glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+	//----------------------------------------------
+	//--  Compute random tangent directions for SSAO
+
+	std::vector<glm::vec3> SSAORandomTangent(16);
+	for (int i = 0; i < 16; i++)
+	{
+		// The tangent is a random direction in xy plane
+		float angle = float(rand()) / float(RAND_MAX) * 2.0f * float(M_PI);
+		SSAORandomTangent[i] = glm::vec3(sinf(angle), cosf(angle), 0.0f);
+	}
+	// Create a 4x4 texture for these random directions
+	glGenTextures(1, &SSAO_RandomTangentVS_Texture);
+	glBindTexture(GL_TEXTURE_2D, SSAO_RandomTangentVS_Texture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB32F, 4, 4, 0, GL_RGB, GL_FLOAT, SSAORandomTangent.data());
+	SetTexture2DParameters(GL_REPEAT, GL_REPEAT, GL_NEAREST, GL_NEAREST);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+
+	//----------------------------------------------
+	//--  Prepare framebuffers
+
+	glGenTextures(1, &Gbuffer_PositionWS_Texture);
+	glGenTextures(1, &Gbuffer_PositionVS_Texture);
+	glGenTextures(1, &Gbuffer_NormalWS_Texture);
+	glGenTextures(1, &Gbuffer_NormalVS_Texture);
+	glGenTextures(1, &Gbuffer_Albedo_Texture);
+	glGenTextures(1, &Gbuffer_Depth_Texture);
+	glGenTextures(1, &SSAO_Occlusion_Texture);
+	glBindTexture(GL_TEXTURE_2D, Gbuffer_PositionWS_Texture);
+	SetTexture2DParameters(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_NEAREST, GL_NEAREST);
+	glBindTexture(GL_TEXTURE_2D, Gbuffer_PositionVS_Texture);
+	SetTexture2DParameters(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_NEAREST, GL_NEAREST);
+	glBindTexture(GL_TEXTURE_2D, Gbuffer_NormalWS_Texture);
+	SetTexture2DParameters(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_NEAREST, GL_NEAREST);
+	glBindTexture(GL_TEXTURE_2D, Gbuffer_NormalVS_Texture);
+	SetTexture2DParameters(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_NEAREST, GL_NEAREST);
+	glBindTexture(GL_TEXTURE_2D, Gbuffer_Albedo_Texture);
+	SetTexture2DParameters(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_NEAREST, GL_NEAREST);
+	glBindTexture(GL_TEXTURE_2D, Gbuffer_Depth_Texture);
+	SetTexture2DParameters(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_NEAREST, GL_NEAREST);
+	glBindTexture(GL_TEXTURE_2D, SSAO_Occlusion_Texture);
+	SetTexture2DParameters(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_NEAREST, GL_NEAREST);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	// Allocate the memory of the textures
+	resize_fullscreen_textures();
+
+	// Create the G-buffer framebuffer
+	glGenFramebuffers(1, &Gbuffer_FBO);
+	glBindFramebuffer(GL_FRAMEBUFFER, Gbuffer_FBO);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, Gbuffer_PositionWS_Texture, 0);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, Gbuffer_PositionVS_Texture, 0);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, Gbuffer_NormalWS_Texture, 0);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, Gbuffer_NormalVS_Texture, 0);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT4, GL_TEXTURE_2D, Gbuffer_Albedo_Texture, 0);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, Gbuffer_Depth_Texture, 0);
+	glDrawBuffers(5, DrawBuffersConstants);
+	CheckFramebufferStatus("Gbuffer");
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	// Create the SSAO_Evaluation_FBO framebuffer
+	glGenFramebuffers(1, &SSAO_Evaluation_FBO);
+	glBindFramebuffer(GL_FRAMEBUFFER, SSAO_Evaluation_FBO);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, SSAO_Occlusion_Texture, 0);
+	glDrawBuffers(1, DrawBuffersConstants);
+	CheckFramebufferStatus("SSAO_Evaluation");
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	// Create the framebuffer for rendering into the shadow texture, and set the shadow texture to it
+	glGenFramebuffers(1, &ShadowFBO);
+	glBindFramebuffer(GL_FRAMEBUFFER, ShadowFBO);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, ShadowTexture, 0);
+	CheckFramebufferStatus("ShadowFBO");
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+
 	//------------------------
 	//--  Create the glass  --
 
@@ -260,6 +410,20 @@ void init_scene()
 	//----------------------------------------------
 	//--  Miscellaneous
 
+	// Data of the camera that is used when rendering from the light
+	LightCameraView = glm::lookAt(
+		glm::vec3(PhongLights_ubo.PhongLights[0].position),
+		glm::vec3(PhongLights_ubo.PhongLights[0].position) + PhongLights_ubo.PhongLights[0].spot_direction,
+		glm::vec3(0.0f, 1.0f, 0.0f));
+	LightCameraData_ubo.SetCamera(LightCameraView);
+	LightCameraData_ubo.UpdateOpenGLData();
+
+	ShadowMatrix =
+		glm::translate(glm::mat4(1.0f), glm::vec3(0.5f)) *
+		glm::scale(glm::mat4(1.0f), glm::vec3(0.5f)) *
+		LightCameraProjection *
+		LightCameraView;
+
 	// Create the query object
 	glGenQueries(1, &RenderTimeQuery);
 }
@@ -268,8 +432,7 @@ void init_scene()
 void update_scene(int app_time_diff_ms)
 {
 	// Data of the main camera
-	CameraData_ubo.SetProjection(
-		glm::perspective(glm::radians(45.0f), float(win_width) / float(win_height), 0.5f, 1000.0f));
+	CameraData_ubo.SetProjection(glm::perspective(glm::radians(45.0f), float(win_width) / float(win_height), 0.5f, 1000.0f));
 	CameraData_ubo.SetCamera(the_camera);
 	CameraData_ubo.UpdateOpenGLData();
 
@@ -282,37 +445,74 @@ void update_scene(int app_time_diff_ms)
 	PhongLights_ubo.PhongLights.clear();
 	PhongLights_ubo.PhongLights.push_back(PhongLight::CreateDirectionalLight(light_position, glm::vec3(0.7f), glm::vec3(0.3f), glm::vec3(0.0f)));
 	PhongLights_ubo.UpdateOpenGLData();
+
+	LightCameraView = glm::lookAt(
+		glm::vec3(PhongLights_ubo.PhongLights[0].position),
+		glm::vec3(PhongLights_ubo.PhongLights[0].position) + PhongLights_ubo.PhongLights[0].spot_direction,
+		glm::vec3(0.0f, 1.0f, 0.0f));
+	LightCameraData_ubo.SetCamera(LightCameraView);
+	LightCameraData_ubo.UpdateOpenGLData();
+
+	ShadowMatrix =
+		glm::translate(glm::mat4(1.0f), glm::vec3(0.5f)) *
+		glm::scale(glm::mat4(1.0f), glm::vec3(0.5f)) *
+		LightCameraProjection *
+		LightCameraView;
 }
 
-/// Renders the whole frame
-void render_scene()
+void draw_glass()
 {
-	// Start measuring the elapsed time
-	glBeginQuery(GL_TIME_ELAPSED, RenderTimeQuery);
+	if (notexture_program.IsValid())
+	{
+		// Set up depth test and blending
+		glDepthMask(GL_FALSE);
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-	//----------------------------------------------
-	//--  Render the scene onto the main window
+		// Set the data of the material
+		GlassMaterial_ubo.BindBuffer(DEFAULT_MATERIAL_BINDING);
+		// Set the data of the object
+		GlassModel_ubo.BindBuffer(DEFAULT_OBJECT_BINDING);
 
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	glViewport(0, 0, win_width, win_height);
+		//notexture_program.Uniform1f("alpha", 0.5);
 
-	// Clear the main window
-	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-	glClearDepth(1.0);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		// Use the proper program and set its uniform variables
+		notexture_program.Use();
 
-	glEnable(GL_DEPTH_TEST);
+		// Render the glass quad
+		geom_glass.BindVAO();
+		geom_glass.Draw();
 
-	// Set the data of the camera and the lights
-	CameraData_ubo.BindBuffer(DEFAULT_CAMERA_BINDING);
-	PhongLights_ubo.BindBuffer(DEFAULT_LIGHTS_BINDING);
+		glDisable(GL_BLEND);
+		glDepthMask(GL_TRUE);
+	}
+}
+
+void render_stuff_once(bool gen_shadows)
+{
+	if (gen_shadows)
+	{
+		glEnable(GL_CULL_FACE);
+		glCullFace(GL_FRONT);
+	}
 
 	// Render all objects in the scene
 	for (auto iter = ObjectsInScene.begin(); iter != ObjectsInScene.end(); ++iter)
 	{
-		if (iter->shading_program && iter->shading_program->IsValid())
-			iter->shading_program->Use();
-		else continue;		// The program is not ready, skip this object and render another one
+		if (gen_shadows)
+		{
+			if (gen_shadow_program.IsValid())
+				gen_shadow_program.Use();
+			else
+				continue;
+		}
+		else
+		{
+			if (iter->shading_program && iter->shading_program->IsValid())
+				iter->shading_program->Use();
+			else
+				continue;
+		}
 
 		// Set the data of the material
 		if (iter->material_ubo)
@@ -332,28 +532,167 @@ void render_scene()
 		}
 	}
 
-	// Transparent objects
-	if (notexture_program.IsValid())
+	if (gen_shadows)
 	{
-		// Set up depth test and blending
-		glDepthMask(GL_FALSE);
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glDisable(GL_CULL_FACE);
+	}
+}
 
-		// Set the data of the material
-		GlassMaterial_ubo.BindBuffer(DEFAULT_MATERIAL_BINDING);
-		// Set the data of the object
-		GlassModel_ubo.BindBuffer(DEFAULT_OBJECT_BINDING);
+/// Renders the whole frame
+void render_scene()
+{
+	// Start measuring the elapsed time
+	glBeginQuery(GL_TIME_ELAPSED, RenderTimeQuery);
+
+	//--------------------------------------
+	//--  Render into the shadow texture  --
+
+	glBindFramebuffer(GL_FRAMEBUFFER, ShadowFBO);
+	glViewport(0, 0, ShadowTexSize, ShadowTexSize);
+
+	// Clear the framebuffer, clear only the depth (there is no color)
+	glClearDepth(1.0);
+	glClear(GL_DEPTH_BUFFER_BIT);
+	glEnable(GL_DEPTH_TEST);
+
+	LightCameraData_ubo.BindBuffer(DEFAULT_CAMERA_BINDING);
+
+	render_stuff_once(true);
+
+	//----------------------------------------------
+	//--  First, render the scene into the G-buffer
+
+	glBindFramebuffer(GL_FRAMEBUFFER, Gbuffer_FBO);
+	glViewport(0, 0, win_width, win_height);
+
+	// Clear the G-buffer, i.e., clear all textures to (0,0,0,0) and depth to 1.0
+	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+	glClearDepth(1.0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	glEnable(GL_DEPTH_TEST);
+
+	CameraData_ubo.BindBuffer(DEFAULT_CAMERA_BINDING);
+	PhongLights_ubo.BindBuffer(DEFAULT_LIGHTS_BINDING);
+
+	render_stuff_once(false);
+
+	glDisable(GL_DEPTH_TEST);
+
+	//----------------------------------------------
+	//--  Evaluate the SSAO (when necessary)
+
+	if (evaluate_ssao_program.IsValid())
+	{
+		//----------------------------------------------
+		//--  Evaluate the SSAO
+
+		// Bind the proper framebuffer
+		glBindFramebuffer(GL_FRAMEBUFFER, SSAO_Evaluation_FBO);
+		glViewport(0, 0, win_width, win_height);
+
+		// Bind all textures that we need
+		glActiveTexture(GL_TEXTURE0);	glBindTexture(GL_TEXTURE_2D, Gbuffer_PositionVS_Texture);
+		glActiveTexture(GL_TEXTURE1);	glBindTexture(GL_TEXTURE_2D, Gbuffer_NormalVS_Texture);
+		glActiveTexture(GL_TEXTURE2);	glBindTexture(GL_TEXTURE_2D, SSAO_RandomTangentVS_Texture);
+
+		// Bind all UBOs that we need
+		CameraData_ubo.BindBuffer(DEFAULT_CAMERA_BINDING);
+		// Although the binding point 1 is usually used by the data of the lights, we do not need the lights here, so we may use this binding point
+		glBindBufferBase(GL_UNIFORM_BUFFER, 1, SSAO_Samples_UBO);
 
 		// Use the proper program and set its uniform variables
-		notexture_program.Use();
+		evaluate_ssao_program.Use();
+		evaluate_ssao_program.Uniform1f("SSAO_Radius", SSAO_Radius);
 
-		// Render the glass quad
-		geom_glass.BindVAO();
-		geom_glass.Draw();
-	
-		glDisable(GL_BLEND);
-		glDepthMask(GL_TRUE);
+		// Render the fullscreen quad to evaluate every pixel
+		geom_fullscreen_quad.BindVAO();
+		geom_fullscreen_quad.Draw();
+	}
+
+	// dalsi pass
+
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glViewport(0, 0, win_width, win_height);
+
+	if (what_to_display == 1)
+	{
+		display_texture_program.Use();
+		// Set the transformation texture - scale the position to 0.1
+		display_texture_program.UniformMatrix4fv("transformation", 1, GL_FALSE, glm::value_ptr(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f))));
+		// Bind the proper texture
+		glActiveTexture(GL_TEXTURE0);	glBindTexture(GL_TEXTURE_2D, Gbuffer_PositionWS_Texture);
+
+		// Render the fullscreen quad to evaluate every pixel
+		geom_fullscreen_quad.BindVAO();
+		geom_fullscreen_quad.Draw();
+	}
+	else if (what_to_display == 2)
+	{
+		display_texture_program.Use();
+		// Set the transformation texture - no scale
+		display_texture_program.UniformMatrix4fv("transformation", 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
+		// Bind the proper texture
+		glActiveTexture(GL_TEXTURE0);	glBindTexture(GL_TEXTURE_2D, Gbuffer_NormalWS_Texture);
+
+		// Render the fullscreen quad to evaluate every pixel
+		geom_fullscreen_quad.BindVAO();
+		geom_fullscreen_quad.Draw();
+	}
+	else if (what_to_display == 3)
+	{
+		display_texture_program.Use();
+		// Set the transformation texture - no scale
+		display_texture_program.UniformMatrix4fv("transformation", 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
+		// Bind the proper texture
+		glActiveTexture(GL_TEXTURE0);	glBindTexture(GL_TEXTURE_2D, Gbuffer_Albedo_Texture);
+
+		// Render the fullscreen quad to evaluate every pixel
+		geom_fullscreen_quad.BindVAO();
+		geom_fullscreen_quad.Draw();
+	}
+	else if (what_to_display == 4)
+	{
+		display_texture_program.Use();
+		// Set the transformation texture - duplicate red channel, the same as .rrr in swizzling
+		display_texture_program.UniformMatrix4fv("transformation", 1, GL_FALSE, glm::value_ptr(glm::mat4(
+			1.0f, 1.0f, 1.0f, 0.0f,
+			0.0f, 0.0f, 0.0f, 0.0f,
+			0.0f, 0.0f, 0.0f, 0.0f,
+			0.0f, 0.0f, 0.0f, 0.0f)));
+		// Bind the proper texture
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, SSAO_Occlusion_Texture);
+
+		// Render the fullscreen quad to evaluate every pixel
+		geom_fullscreen_quad.BindVAO();
+		geom_fullscreen_quad.Draw();
+	}
+	else if (evaluate_lighting_program.IsValid())
+	{
+		//----------------------------------------------
+		//--  Evaluate the lighting and display the final image, with or without DoF
+		
+		// Bind all textures that we need
+		glActiveTexture(GL_TEXTURE0);	glBindTexture(GL_TEXTURE_2D, Gbuffer_PositionWS_Texture);
+		glActiveTexture(GL_TEXTURE1);	glBindTexture(GL_TEXTURE_2D, Gbuffer_NormalWS_Texture);
+		glActiveTexture(GL_TEXTURE2);	glBindTexture(GL_TEXTURE_2D, Gbuffer_Albedo_Texture);
+		glActiveTexture(GL_TEXTURE3);	glBindTexture(GL_TEXTURE_2D, SSAO_Occlusion_Texture);
+		glActiveTexture(GL_TEXTURE4);	glBindTexture(GL_TEXTURE_2D, ShadowTexture);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+
+		// Bind all UBOs that we need
+		CameraData_ubo.BindBuffer(DEFAULT_CAMERA_BINDING);
+		PhongLights_ubo.BindBuffer(DEFAULT_LIGHTS_BINDING);
+		WhiteMaterial_ubo.BindBuffer(DEFAULT_MATERIAL_BINDING);		// Bind the data with the specular color and shininess (all materials have the same)
+
+		evaluate_lighting_program.Use();
+		evaluate_lighting_program.UniformMatrix4fv("shadow_matrix", 1, GL_FALSE, glm::value_ptr(ShadowMatrix));
+
+		// Render the fullscreen quad to evaluate every pixel
+		geom_fullscreen_quad.BindVAO();
+		geom_fullscreen_quad.Draw();
 	}
 
 	//----------------------------------------------
@@ -375,6 +714,22 @@ void render_scene()
 
 void resize_fullscreen_textures()
 {
+	// Resize G-buffer textures to match the window
+	glBindTexture(GL_TEXTURE_2D, Gbuffer_PositionWS_Texture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, win_width, win_height, 0, GL_RGBA, GL_FLOAT, nullptr);
+	glBindTexture(GL_TEXTURE_2D, Gbuffer_PositionVS_Texture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, win_width, win_height, 0, GL_RGBA, GL_FLOAT, nullptr);
+	glBindTexture(GL_TEXTURE_2D, Gbuffer_NormalWS_Texture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, win_width, win_height, 0, GL_RGBA, GL_FLOAT, nullptr);
+	glBindTexture(GL_TEXTURE_2D, Gbuffer_NormalVS_Texture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, win_width, win_height, 0, GL_RGBA, GL_FLOAT, nullptr);
+	glBindTexture(GL_TEXTURE_2D, Gbuffer_Albedo_Texture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, win_width, win_height, 0, GL_RGBA, GL_FLOAT, nullptr);
+	glBindTexture(GL_TEXTURE_2D, Gbuffer_Depth_Texture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, win_width, win_height, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, nullptr);
+	glBindTexture(GL_TEXTURE_2D, SSAO_Occlusion_Texture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, win_width, win_height, 0, GL_RED, GL_FLOAT, nullptr);
+	glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 //-------------------
@@ -403,6 +758,18 @@ void init_gui()
 	TwAddVarRW(the_gui, "Light direction", TW_TYPE_FLOAT, &light_pos, "min=1 max=8 step=0.03");
 
 	TwAddVarRO(the_gui, "Render time (ms)", TW_TYPE_FLOAT, &render_time_ms, nullptr);
+
+	TwEnumVal displays[5] =
+	{
+		{ 0, "Final Image" },
+		{ 1, "Position" },
+		{ 2, "Normal" },
+		{ 3, "Albedo" },
+		{ 4, "Occlusion" }
+	};
+
+	TwType displayType = TwDefineEnum("WhatToDisplay", displays, 5);
+	TwAddVarRW(the_gui, "Display", displayType, &what_to_display, nullptr);
 }
 
 //---------------------------
@@ -418,9 +785,9 @@ void on_keyboard_func(unsigned char key, int x, int y)
 
 	switch (key)
 	{
-	case 27:		// Escape key
-		exit(0);
-		break;
+		case 27:		// Escape key
+			exit(0);
+		default: ;
 	}
 }
 

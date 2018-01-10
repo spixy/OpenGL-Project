@@ -8,8 +8,10 @@ layout (location = 2) in vec2 tex_coord;
 // Output variables
 out VertexData
 {
-	vec3 normal_ws;		// Normal in world space
 	vec3 position_ws;	// Position in world space
+	vec3 position_vs;	// Position in view space
+	vec3 normal_ws;		// Normal in world space
+	vec3 normal_vs;		// Normal in view space
 	vec2 tex_coord;
 } outData;
 
@@ -36,9 +38,11 @@ layout (std140, binding = 2) uniform ModelData
 
 void main()
 {
-	outData.tex_coord = tex_coord;
 	outData.position_ws = vec3(model * position);
+	outData.position_vs = vec3(view * model * position);
 	outData.normal_ws = normalize(model_it * normal);
+	outData.normal_vs = normalize(view_it * model_it * normal);
+	outData.tex_coord = tex_coord;
 
 	gl_Position = projection * view * model * position;
 }

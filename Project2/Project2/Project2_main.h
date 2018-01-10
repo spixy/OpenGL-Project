@@ -13,6 +13,12 @@ using namespace PV227;
 // Shader programs
 ShaderProgram notexture_program;
 ShaderProgram texture_program;
+ShaderProgram display_texture_program;
+ShaderProgram evaluate_lighting_program;
+ShaderProgram evaluate_nothing_program;
+ShaderProgram evaluate_ssao_program;
+ShaderProgram gen_shadow_program;
+ShaderProgram display_shadow_texture_program;
 
 // Geometries we use in this lecture
 Geometry geom_cube;
@@ -22,6 +28,7 @@ Geometry geom_cylinder;
 Geometry geom_capsule;
 Geometry geom_teapot;
 Geometry geom_glass;
+Geometry geom_fullscreen_quad;
 // List of geometries which we choose for our scene
 std::vector<std::pair<Geometry *, glm::mat4> > Geometries;
 
@@ -33,6 +40,11 @@ GLuint wood_tex;
 GLuint lenna_tex;
 // List of textures which we choose for our scene
 std::vector<GLuint> Textures;
+
+// Shadow texture
+GLuint ShadowFBO;			// Framebuffer object that is used when rendering into the shadow texture
+GLuint ShadowTexture;		// Shadow texture
+glm::mat4 ShadowMatrix;
 
 // Data of our materials
 MaterialData_UBO RedMaterial_ubo;
@@ -52,6 +64,11 @@ std::vector<ModelData_UBO> Models_ubo;
 ModelData_UBO FloorModel_ubo;
 ModelData_UBO GlassModel_ubo;
 
+// UBO with random samples in the unit hemisphere for SSAO
+GLuint SSAO_Samples_UBO;
+// Texture with random tangents directions (in view space) for SSAO
+GLuint SSAO_RandomTangentVS_Texture;
+
 // List of objects in the scene. Each object is defined by shaders it uses, its material,
 // model matrix, texture (if used), and geometry.
 struct SceneObject
@@ -70,6 +87,24 @@ PhongLightsData_UBO PhongLights_ubo;
 // Data of our camera - view matrix, projection matrix, etc.
 CameraData_UBO CameraData_ubo;
 
+// Data of the camera that is used when rendering from the position of the light
+glm::mat4 LightCameraProjection;			// Projection matrix of the camera
+glm::mat4 LightCameraView;					// View matrix of the camera
+CameraData_UBO LightCameraData_ubo;			// UBO with the data
+
+// FBO for G-buffer for deferred shading
+GLuint Gbuffer_FBO;					// Framebuffer object that is used when rendering into the G-buffer
+GLuint Gbuffer_PositionWS_Texture;	// Texture with positions in world space
+GLuint Gbuffer_PositionVS_Texture;	// Texture with positions in view space
+GLuint Gbuffer_NormalWS_Texture;	// Texture with normals in world space
+GLuint Gbuffer_NormalVS_Texture;	// Texture with normals in view space
+GLuint Gbuffer_Albedo_Texture;		// Texture with albedo (i.e. diffuse color)
+GLuint Gbuffer_Depth_Texture;		// Texture with depths for depth test
+
+									// FBO for evaluation of the SSAO
+GLuint SSAO_Evaluation_FBO;					// Framebuffer object that is used to evaluate SSAO
+GLuint SSAO_Occlusion_Texture;				// Texture with ambient occlusion
+
 // OpenGL query object to get render time of one frame
 GLuint RenderTimeQuery;
 
@@ -79,6 +114,8 @@ void init_scene();
 void update_scene(int app_time_diff_ms);
 void render_scene();
 void resize_fullscreen_textures();
+void draw_glass();
+void render_stuff_once(bool gen_shadows);
 
 //-------------------
 //----    GUI    ----
@@ -107,3 +144,7 @@ int win_height = 480;
 // Current time of the application in milliseconds, for animations
 int app_time_ms = 0;
 int last_glut_time = 0;
+int what_to_display = 0;
+
+const float SSAO_Radius = 0.5f;
+const int ShadowTexSize = 1024;
