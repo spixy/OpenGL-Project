@@ -1,6 +1,7 @@
 Debug/
 Release/
+.vs/
 *.ipch
 *.db
 *.opendb
-Project2/.vs/
+*.suo

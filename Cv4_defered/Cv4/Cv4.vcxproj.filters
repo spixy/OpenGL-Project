@@ -1,0 +1,100 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Geometries">
+      <UniqueIdentifier>{856FB945-BEF1-4187-9D14-906F6BDE946B}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Framework">
+      <UniqueIdentifier>{C158E48A-4A5B-40A6-951D-BF176B3A1134}</UniqueIdentifier>
+      <Extensions>h;hpp;hxx;hm;inl;inc;xsd</Extensions>
+    </Filter>
+    <Filter Include="Shaders">
+      <UniqueIdentifier>{B1F109B9-7EA4-4C45-8547-91DBBC59D6AC}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Lecture">
+      <UniqueIdentifier>{EDCCD00D-D337-43E4-BC34-EE9843902BF8}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Cv4_main.cpp">
+      <Filter>Lecture</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Framework\PV227_Basics.cpp">
+      <Filter>Framework</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Framework\PV227_UBOs.cpp">
+      <Filter>Framework</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\inlines\tangentteapot.inl">
+      <Filter>Geometries</Filter>
+    </None>
+    <None Include="..\..\inlines\tangentcapsule.inl">
+      <Filter>Geometries</Filter>
+    </None>
+    <None Include="..\..\inlines\tangentcube.inl">
+      <Filter>Geometries</Filter>
+    </None>
+    <None Include="..\..\inlines\tangentcylinder.inl">
+      <Filter>Geometries</Filter>
+    </None>
+    <None Include="..\..\inlines\tangentsphere.inl">
+      <Filter>Geometries</Filter>
+    </None>
+    <None Include="..\..\inlines\tangentteapotpatch.inl">
+      <Filter>Geometries</Filter>
+    </None>
+    <None Include="..\..\inlines\tangenttorus.inl">
+      <Filter>Geometries</Filter>
+    </None>
+    <None Include="Shaders\notexture_vertex.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\texture_vertex.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\notexture_deferred_fragment.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\texture_deferred_fragment.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\evaluate_quad_fragment.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\evaluate_sphere_fragment.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\evaluate_sphere_vertex.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\display_texture_fragment.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\notexture_forward_fragment.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\texture_forward_fragment.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\fullscreen_quad_vertex.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Cv4_main.h">
+      <Filter>Lecture</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Framework\PV227.h">
+      <Filter>Framework</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Framework\PV227_Basics.h">
+      <Filter>Framework</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Framework\PV227_UBOs.h">
+      <Filter>Framework</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>
