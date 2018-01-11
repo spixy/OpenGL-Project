@@ -13,6 +13,8 @@ using namespace PV227;
 // Shader programs
 ShaderProgram notexture_program;
 ShaderProgram texture_program;
+ShaderProgram gen_shadow_program;
+ShaderProgram display_shadow_texture_program;
 
 // Geometries we use in this lecture
 Geometry geom_cube;
@@ -33,6 +35,17 @@ GLuint wood_tex;
 GLuint lenna_tex;
 // List of textures which we choose for our scene
 std::vector<GLuint> Textures;
+
+// Data of the camera that is used when rendering from the position of the light
+glm::mat4 LightCameraProjection;			// Projection matrix of the camera
+glm::mat4 LightCameraView;					// View matrix of the camera
+CameraData_UBO LightCameraData_ubo;			// UBO with the data
+
+// Shadow texture
+GLuint ShadowFBO;			// Framebuffer object that is used when rendering into the shadow texture
+GLuint ShadowTexture;		// Shadow texture
+int ShadowTexSize = 1024;	// Width and height of the shadow texture
+glm::mat4 ShadowMatrix;
 
 // Data of our materials
 MaterialData_UBO RedMaterial_ubo;
@@ -77,6 +90,8 @@ GLuint RenderTimeQuery;
 void reload_shaders();
 void init_scene();
 void update_scene(int app_time_diff_ms);
+void render_stuff_once(bool gen_shadows);
+void render_glass();
 void render_scene();
 void resize_fullscreen_textures();
 

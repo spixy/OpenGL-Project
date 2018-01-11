@@ -33,6 +33,20 @@ void reload_shaders()
 	texture_program.AddFragmentShader("Shaders/texture_fragment.glsl");
 	texture_program.Link();
 
+	// Program for displaying shadow maps
+	display_shadow_texture_program.Init();
+	display_shadow_texture_program.AddVertexShader("Shaders/fullscreen_quad_vertex.glsl");
+	display_shadow_texture_program.AddFragmentShader("Shaders/display_shadow_texture_fragment.glsl");
+	display_shadow_texture_program.Link();
+
+	// Task 3: Prepare special shaders for rendering into the shadow map
+	// Program for generating shadow maps
+	gen_shadow_program.Init();
+	gen_shadow_program.AddVertexShader("Shaders/nolit_vertex.glsl");
+	gen_shadow_program.AddFragmentShader("Shaders/nothing_fragment.glsl");
+	gen_shadow_program.Link();
+
+
 	cout << "Shaders are reloaded" << endl;
 }
 
@@ -105,6 +119,13 @@ void init_scene()
 	the_camera.SetCamera(1.25f, -0.5f, 40.0f);
 	CameraData_ubo.Init();
 
+	LightCameraProjection = glm::perspective(glm::radians(80.0f), 1.0f, 2.0f, 30.0f);
+	LightCameraView = glm::mat4(1.0f);
+	LightCameraData_ubo.Init();
+	LightCameraData_ubo.SetProjection(LightCameraProjection);
+	LightCameraData_ubo.SetCamera(LightCameraView);
+	LightCameraData_ubo.UpdateOpenGLData();
+
 	//----------------------------------------------
 	//--  Prepare geometries
 
@@ -148,6 +169,14 @@ void init_scene()
 	// Add the textures into our list of textures
 	Textures.push_back(wood_tex);
 	Textures.push_back(lenna_tex);
+
+	// Create the shadow texture, allocate its memory, and set its basic parameters
+	glGenTextures(1, &ShadowTexture);
+	glBindTexture(GL_TEXTURE_2D, ShadowTexture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, ShadowTexSize, ShadowTexSize, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, nullptr);
+	//SetTexture2DParameters(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_NEAREST, GL_NEAREST);
+	SetTexture2DParameters(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_LINEAR, GL_LINEAR);
+	glBindTexture(GL_TEXTURE_2D, 0);
 
 	//----------------------------------------------
 	//--  Prepare objects in the scene
@@ -258,6 +287,16 @@ void init_scene()
 	geom_glass.DrawElementsCount = 0;
 
 	//----------------------------------------------
+	//--  Prepare framebuffers
+
+	// Create the framebuffer for rendering into the shadow texture, and set the shadow texture to it
+	glGenFramebuffers(1, &ShadowFBO);
+	glBindFramebuffer(GL_FRAMEBUFFER, ShadowFBO);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, ShadowTexture, 0);
+	CheckFramebufferStatus("ShadowFBO");
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	//----------------------------------------------
 	//--  Miscellaneous
 
 	// Create the query object
@@ -282,37 +321,97 @@ void update_scene(int app_time_diff_ms)
 	PhongLights_ubo.PhongLights.clear();
 	PhongLights_ubo.PhongLights.push_back(PhongLight::CreateDirectionalLight(light_position, glm::vec3(0.7f), glm::vec3(0.3f), glm::vec3(0.0f)));
 	PhongLights_ubo.UpdateOpenGLData();
+
+
+	// Data of the main camera
+	CameraData_ubo.SetProjection(
+		glm::perspective(glm::radians(45.0f), float(win_width) / float(win_height), 0.1f, 1000.0f));
+	CameraData_ubo.SetCamera(the_camera);
+	CameraData_ubo.UpdateOpenGLData();
+
+
+	glm::vec3 light_rot = glm::vec3(
+		cosf(light_pos / 6.0f) * sinf(light_pos),
+		0.0f,
+		cosf(light_pos / 6.0f) * cosf(light_pos));
+
+	// Data of the camera that is used when rendering from the light
+	LightCameraView = glm::lookAt(
+		glm::vec3(PhongLights_ubo.PhongLights[0].position),
+		glm::vec3(PhongLights_ubo.PhongLights[0].position) + light_rot,
+		glm::vec3(0.0f, 1.0f, 0.0f));
+	LightCameraData_ubo.SetCamera(LightCameraView);
+	LightCameraData_ubo.UpdateOpenGLData();
+
+	ShadowMatrix =
+		//glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -0.002f)) *
+		glm::translate(glm::mat4(1.0f), glm::vec3(0.5f)) *
+		glm::scale(glm::mat4(1.0f), glm::vec3(0.5f)) *
+		LightCameraProjection *
+		LightCameraView;
 }
 
-/// Renders the whole frame
-void render_scene()
+void render_glass()
 {
-	// Start measuring the elapsed time
-	glBeginQuery(GL_TIME_ELAPSED, RenderTimeQuery);
+	if (notexture_program.IsValid())
+	{
+		// Set up depth test and blending
+		glDepthMask(GL_FALSE);
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-	//----------------------------------------------
-	//--  Render the scene onto the main window
+		// Set the data of the material
+		GlassMaterial_ubo.BindBuffer(DEFAULT_MATERIAL_BINDING);
+		// Set the data of the object
+		GlassModel_ubo.BindBuffer(DEFAULT_OBJECT_BINDING);
 
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	glViewport(0, 0, win_width, win_height);
+		// Use the proper program and set its uniform variables
+		notexture_program.Use();
 
-	// Clear the main window
-	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-	glClearDepth(1.0);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		// Render the glass quad
+		geom_glass.BindVAO();
+		geom_glass.Draw();
 
-	glEnable(GL_DEPTH_TEST);
+		glDisable(GL_BLEND);
+		glDepthMask(GL_TRUE);
+	}
+}
 
-	// Set the data of the camera and the lights
-	CameraData_ubo.BindBuffer(DEFAULT_CAMERA_BINDING);
-	PhongLights_ubo.BindBuffer(DEFAULT_LIGHTS_BINDING);
+void render_stuff_once(bool gen_shadows)
+{
+	if (gen_shadows)
+	{
+		glEnable(GL_CULL_FACE);
+		glCullFace(GL_FRONT);
+	}
+	else
+	{
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, ShadowTexture);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+	}
 
 	// Render all objects in the scene
 	for (auto iter = ObjectsInScene.begin(); iter != ObjectsInScene.end(); ++iter)
 	{
-		if (iter->shading_program && iter->shading_program->IsValid())
-			iter->shading_program->Use();
-		else continue;		// The program is not ready, skip this object and render another one
+		if (gen_shadows)
+		{
+			if (gen_shadow_program.IsValid())
+				gen_shadow_program.Use();
+			else
+				continue;
+		}
+		else
+		{
+			if (iter->shading_program && iter->shading_program->IsValid())
+			{
+				iter->shading_program->Use();
+				iter->shading_program->UniformMatrix4fv("shadow_matrix", 1, GL_FALSE, glm::value_ptr(ShadowMatrix));
+			}
+			else
+				continue;
+		}
 
 		// Set the data of the material
 		if (iter->material_ubo)
@@ -332,29 +431,59 @@ void render_scene()
 		}
 	}
 
-	// Transparent objects
-	if (notexture_program.IsValid())
+	if (gen_shadows)
 	{
-		// Set up depth test and blending
-		glDepthMask(GL_FALSE);
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-		// Set the data of the material
-		GlassMaterial_ubo.BindBuffer(DEFAULT_MATERIAL_BINDING);
-		// Set the data of the object
-		GlassModel_ubo.BindBuffer(DEFAULT_OBJECT_BINDING);
-
-		// Use the proper program and set its uniform variables
-		notexture_program.Use();
-
-		// Render the glass quad
-		geom_glass.BindVAO();
-		geom_glass.Draw();
-	
-		glDisable(GL_BLEND);
-		glDepthMask(GL_TRUE);
+		glDisable(GL_CULL_FACE);
 	}
+}
+
+/// Renders the whole frame
+void render_scene()
+{
+	// Start measuring the elapsed time
+	glBeginQuery(GL_TIME_ELAPSED, RenderTimeQuery);
+
+	//--------------------------------------
+	//--  Render into the shadow texture  --
+
+	glBindFramebuffer(GL_FRAMEBUFFER, ShadowFBO);
+	glViewport(0, 0, ShadowTexSize, ShadowTexSize);
+
+	// Clear the framebuffer, clear only the depth (there is no color)
+	glClearDepth(1.0);
+	glClear(GL_DEPTH_BUFFER_BIT);
+	glEnable(GL_DEPTH_TEST);
+
+	LightCameraData_ubo.BindBuffer(DEFAULT_CAMERA_BINDING);
+
+	render_stuff_once(true);
+
+	//-----------------------------------
+	//--  Render into the main window  --
+
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glViewport(0, 0, win_width, win_height);
+
+	// Clear the main window
+	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+	glClearDepth(1.0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glEnable(GL_DEPTH_TEST);
+
+	// Set the data of the scene, like the camera and the lights. Use the light camera
+	LightCameraData_ubo.BindBuffer(DEFAULT_CAMERA_BINDING);
+	PhongLights_ubo.BindBuffer(DEFAULT_LIGHTS_BINDING);
+	render_stuff_once(false);
+
+	//// Set the data of the camera and the lights
+	//CameraData_ubo.BindBuffer(DEFAULT_CAMERA_BINDING);
+	//PhongLights_ubo.BindBuffer(DEFAULT_LIGHTS_BINDING);
+
+	//// Render all objects in the scene
+	//render_stuff_once(false);
+
+	//// Transparent objects
+	//render_glass();
 
 	//----------------------------------------------
 
