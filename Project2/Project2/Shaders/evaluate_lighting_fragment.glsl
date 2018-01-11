@@ -61,9 +61,6 @@ layout (binding = 0) uniform sampler2D positions_ws_tex;
 layout (binding = 1) uniform sampler2D normals_ws_tex;
 layout (binding = 2) uniform sampler2D albedo_tex;
 layout (binding = 3) uniform sampler2D ssao_tex;
-layout (binding = 1) uniform sampler2DShadow shadow_tex;
-
-uniform mat4 shadow_matrix;
 
 //-----------------------------------------------------------------------
 
@@ -75,10 +72,6 @@ void main()
 	vec3 albedo = texture(albedo_tex, inData.tex_coord).xyz;
     float ssao = texture(ssao_tex, inData.tex_coord).r;
     
-	// Coordinate for the shadow
-    //vec4 shadow_tex_coord = shadow_matrix * vec4(position_ws, 1.0);
-    float shadow_factor = 1.0; //textureProj(shadow_tex, shadow_tex_coord);
-
 	// Compute the lighting
 	vec3 N = normal_ws;
 	vec3 Eye = normalize(eye_position - position_ws);
@@ -91,13 +84,12 @@ void main()
 	{
 		vec3 a, d, s;
 		EvaluatePhongLight(lights[i], a, d, s, N, position_ws, Eye, material.shininess);
-		amb += a;	dif += d * shadow_factor;	spe += s * shadow_factor;
+		amb += a;	dif += d;	spe += s;
 	}
 
 	// Compute the final color, apply ambient occlusion
 	vec3 final_light = albedo * amb * ssao + albedo * dif + material.specular * spe;
-	
-	final_color = vec4(final_light, 1.0);
+    final_color = vec4(final_light, 1.0);
 }
 
 //-----------------------------------------------------------------------

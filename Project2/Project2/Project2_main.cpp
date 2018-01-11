@@ -447,8 +447,8 @@ void update_scene(int app_time_diff_ms)
 	PhongLights_ubo.UpdateOpenGLData();
 
 	LightCameraView = glm::lookAt(
-		glm::vec3(PhongLights_ubo.PhongLights[0].position),
-		glm::vec3(PhongLights_ubo.PhongLights[0].position) + PhongLights_ubo.PhongLights[0].spot_direction,
+		light_position,
+		glm::vec3(0.0f, 1.0f, 0.0f),
 		glm::vec3(0.0f, 1.0f, 0.0f));
 	LightCameraData_ubo.SetCamera(LightCameraView);
 	LightCameraData_ubo.UpdateOpenGLData();
@@ -495,6 +495,12 @@ void render_stuff_once(bool gen_shadows)
 		glEnable(GL_CULL_FACE);
 		glCullFace(GL_FRONT);
 	}
+	else
+	{
+		glActiveTexture(GL_TEXTURE0);	glBindTexture(GL_TEXTURE_2D, ShadowTexture);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+	}
 
 	// Render all objects in the scene
 	for (auto iter = ObjectsInScene.begin(); iter != ObjectsInScene.end(); ++iter)
@@ -509,7 +515,10 @@ void render_stuff_once(bool gen_shadows)
 		else
 		{
 			if (iter->shading_program && iter->shading_program->IsValid())
+			{
 				iter->shading_program->Use();
+				iter->shading_program->UniformMatrix4fv("shadow_matrix", 1, GL_FALSE, glm::value_ptr(ShadowMatrix));
+			}
 			else
 				continue;
 		}
@@ -522,7 +531,7 @@ void render_stuff_once(bool gen_shadows)
 			iter->model_ubo->BindBuffer(DEFAULT_OBJECT_BINDING);
 
 		// Set the texture
-		glActiveTexture(GL_TEXTURE0);	glBindTexture(GL_TEXTURE_2D, iter->texture);
+		glActiveTexture(GL_TEXTURE1);	glBindTexture(GL_TEXTURE_2D, iter->texture);
 
 		// Render the object
 		if (iter->geometry)
@@ -615,6 +624,10 @@ void render_scene()
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glViewport(0, 0, win_width, win_height);
 
+	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+	glClearDepth(1.0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
 	if (what_to_display == 1)
 	{
 		display_texture_program.Use();
@@ -668,6 +681,19 @@ void render_scene()
 		geom_fullscreen_quad.BindVAO();
 		geom_fullscreen_quad.Draw();
 	}
+	else if (what_to_display == 5)
+	{
+		// Use a special shader and render the shadow texture in grayscale
+		display_shadow_texture_program.Use();
+		glDisable(GL_DEPTH_TEST);
+
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, ShadowTexture);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+
+		geom_fullscreen_quad.BindVAO();
+		geom_fullscreen_quad.Draw();
+	}
 	else if (evaluate_lighting_program.IsValid())
 	{
 		//----------------------------------------------
@@ -678,9 +704,6 @@ void render_scene()
 		glActiveTexture(GL_TEXTURE1);	glBindTexture(GL_TEXTURE_2D, Gbuffer_NormalWS_Texture);
 		glActiveTexture(GL_TEXTURE2);	glBindTexture(GL_TEXTURE_2D, Gbuffer_Albedo_Texture);
 		glActiveTexture(GL_TEXTURE3);	glBindTexture(GL_TEXTURE_2D, SSAO_Occlusion_Texture);
-		glActiveTexture(GL_TEXTURE4);	glBindTexture(GL_TEXTURE_2D, ShadowTexture);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
 
 		// Bind all UBOs that we need
 		CameraData_ubo.BindBuffer(DEFAULT_CAMERA_BINDING);
@@ -688,7 +711,6 @@ void render_scene()
 		WhiteMaterial_ubo.BindBuffer(DEFAULT_MATERIAL_BINDING);		// Bind the data with the specular color and shininess (all materials have the same)
 
 		evaluate_lighting_program.Use();
-		evaluate_lighting_program.UniformMatrix4fv("shadow_matrix", 1, GL_FALSE, glm::value_ptr(ShadowMatrix));
 
 		// Render the fullscreen quad to evaluate every pixel
 		geom_fullscreen_quad.BindVAO();
@@ -759,16 +781,17 @@ void init_gui()
 
 	TwAddVarRO(the_gui, "Render time (ms)", TW_TYPE_FLOAT, &render_time_ms, nullptr);
 
-	TwEnumVal displays[5] =
+	TwEnumVal displays[6] =
 	{
 		{ 0, "Final Image" },
 		{ 1, "Position" },
 		{ 2, "Normal" },
 		{ 3, "Albedo" },
-		{ 4, "Occlusion" }
+		{ 4, "Occlusion" },
+		{ 5, "ShadowTex" }
 	};
 
-	TwType displayType = TwDefineEnum("WhatToDisplay", displays, 5);
+	TwType displayType = TwDefineEnum("WhatToDisplay", displays, 6);
 	TwAddVarRW(the_gui, "Display", displayType, &what_to_display, nullptr);
 }
 
