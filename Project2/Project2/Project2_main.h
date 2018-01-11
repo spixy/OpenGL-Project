@@ -15,7 +15,6 @@ ShaderProgram notexture_program;
 ShaderProgram texture_program;
 ShaderProgram display_texture_program;
 ShaderProgram evaluate_lighting_program;
-ShaderProgram evaluate_nothing_program;
 ShaderProgram evaluate_ssao_program;
 ShaderProgram gen_shadow_program;
 ShaderProgram display_shadow_texture_program;

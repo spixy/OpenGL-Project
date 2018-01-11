@@ -45,12 +45,6 @@ void reload_shaders()
 	evaluate_lighting_program.AddFragmentShader("Shaders/evaluate_lighting_fragment.glsl");
 	evaluate_lighting_program.Link();
 
-	// Program for evaluating the G-buffer using a screen quad
-	evaluate_nothing_program.Init();
-	evaluate_nothing_program.AddVertexShader("Shaders/fullscreen_quad_vertex.glsl");
-	evaluate_nothing_program.AddFragmentShader("Shaders/evaluate_nothing_fragment.glsl");
-	evaluate_nothing_program.Link();
-
 	evaluate_ssao_program.Init();
 	evaluate_ssao_program.AddVertexShader("Shaders/fullscreen_quad_vertex.glsl");
 	evaluate_ssao_program.AddFragmentShader("Shaders/evaluate_ssao_fragment.glsl");
@@ -590,6 +584,9 @@ void render_scene()
 
 	//----------------------------------------------
 	//--  Evaluate the SSAO (when necessary)
+
+	// niekde ma byt glass
+	//draw_glass();
 
 	if (evaluate_ssao_program.IsValid())
 	{
