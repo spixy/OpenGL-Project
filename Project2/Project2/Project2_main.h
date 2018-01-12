@@ -121,7 +121,7 @@ void enable_draw_to_stencil();
 void disable_draw_to_stencil();
 void render_cel_stuff();
 void evaluate_ssao();
-void render_ssao_final(bool toon_rendering);
+void render_ssao_final(bool shadow_toon_rendering);
 void display_shadow_tex();
 
 //-------------------

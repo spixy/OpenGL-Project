@@ -66,7 +66,7 @@ layout (binding = 3) uniform sampler2D ssao_tex;
 layout (binding = 4) uniform sampler2DShadow shadow_tex;
 
 uniform mat4 shadow_matrix;
-uniform bool use_toon;
+uniform bool compute_toon_and_shadow;
 
 //-----------------------------------------------------------------------
 
@@ -80,11 +80,11 @@ void main()
 
 	// Coordinate for the shadow
 	vec4 shadow_tex_coord = shadow_matrix * vec4(position_ws, 1.0);
-	//float shadow_factor = texture(shadow_tex, shadow_tex_coord.xy / shadow_tex_coord.w).r;
-	//float shadow_factor = (shadow_tex_coord.z / shadow_tex_coord.w) < texture(shadow_tex, shadow_tex_coord.xy / shadow_tex_coord.w).r ? 1.0 : 0.0;
-	//float shadow_factor = texture(shadow_tex, shadow_tex_coord.xyz / shadow_tex_coord.w);
 	float shadow_factor = textureProj(shadow_tex, shadow_tex_coord);
     
+    //final_color = shadow_tex_coord;
+	//return;
+
 	// Compute the lighting
 	vec3 N = normal_ws;
 	vec3 Eye = normalize(eye_position - position_ws);
@@ -99,10 +99,7 @@ void main()
 		vec3 a, d, s;
 		EvaluatePhongLight(lights[i], a, d, s, N, position_ws, Eye, material.shininess);
 
-		//d *= shadow_factor;
-		//s *= shadow_factor;
-
-		if (use_toon)
+		if (compute_toon_and_shadow)
 		{
 			// toon shading dif
 			if (d.x < 0.4)				d = vec3(0.2);
@@ -113,6 +110,10 @@ void main()
 			// toon shading spe
 			if (s.x < 0.6)				s = vec3(0.0);
 			else						s = vec3(1.0);
+
+			// shadow
+			d *= shadow_factor;
+			s *= shadow_factor;
 		}
 
 		amb += a;	dif += d;	spe += s;

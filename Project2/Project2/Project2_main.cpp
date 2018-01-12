@@ -632,7 +632,7 @@ void display_shadow_tex()
 	geom_fullscreen_quad.Draw();
 }
 
-void render_ssao_final(bool toon_rendering)
+void render_ssao_final(bool shadow_toon_rendering)
 {
 	// Bind all textures that we need
 	glActiveTexture(GL_TEXTURE0);	glBindTexture(GL_TEXTURE_2D, Gbuffer_PositionWS_Texture);
@@ -649,7 +649,7 @@ void render_ssao_final(bool toon_rendering)
 	WhiteMaterial_ubo.BindBuffer(DEFAULT_MATERIAL_BINDING);		// Bind the data with the specular color and shininess (all materials have the same)
 
 	evaluate_lighting_program.Use();
-	evaluate_lighting_program.Uniform1i("use_toon", toon_rendering ? 1 : 0);
+	evaluate_lighting_program.Uniform1i("compute_toon_and_shadow", shadow_toon_rendering ? 1 : 0);
 	evaluate_lighting_program.UniformMatrix4fv("shadow_matrix", 1, GL_FALSE, glm::value_ptr(ShadowMatrix));
 
 	// Render the fullscreen quad to evaluate every pixel
@@ -663,8 +663,7 @@ void render_scene()
 	// Start measuring the elapsed time
 	glBeginQuery(GL_TIME_ELAPSED, RenderTimeQuery);
 
-	//--------------------------------------
-	//--  Render into the shadow texture  --
+	// Render into shadow texture
 
 	glBindFramebuffer(GL_FRAMEBUFFER, ShadowFBO);
 	glViewport(0, 0, ShadowTexSize, ShadowTexSize);
@@ -678,8 +677,7 @@ void render_scene()
 
 	render_stuff_once(true);
 
-	//----------------------------------------------
-	//--  First, render the scene into the G-buffer
+	// Render into the G-buffer
 
 	glBindFramebuffer(GL_FRAMEBUFFER, Gbuffer_FBO);
 	glViewport(0, 0, win_width, win_height);
@@ -688,7 +686,6 @@ void render_scene()
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 	glClearDepth(1.0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	glEnable(GL_DEPTH_TEST);
 
 	CameraData_ubo.BindBuffer(DEFAULT_CAMERA_BINDING);
 	PhongLights_ubo.BindBuffer(DEFAULT_LIGHTS_BINDING);
@@ -707,9 +704,6 @@ void render_scene()
 	render_stuff_once(false);
 	
 	glDisable(GL_DEPTH_TEST);
-
-	//----------------------------------------------
-	//--  Evaluate the SSAO (when necessary)
 
 	// niekde ma byt glass
 	render_glass();
