@@ -62,6 +62,12 @@ void reload_shaders()
 	gen_shadow_program.AddFragmentShader("Shaders/nothing_fragment.glsl");
 	gen_shadow_program.Link();
 
+	// cel shading
+	expand_program.Init();
+	expand_program.AddVertexShader("Shaders/expand_vertex.glsl");
+	expand_program.AddFragmentShader("Shaders/nolit_fragment.glsl");
+	expand_program.Link();
+
 	cout << "Shaders are reloaded" << endl;
 }
 
@@ -98,6 +104,7 @@ void init_scene()
 	WhiteMaterial_ubo.Init();
 	FloorMaterial_ubo.Init();
 	GlassMaterial_ubo.Init();
+	BlackMaterial_ubo.Init();
 	RedMaterial_ubo.SetMaterial		(PhongMaterial::CreateBasicMaterial(glm::vec3(1.0f, 0.0f, 0.0f), true, 200.0f, 1.0f));
 	GreenMaterial_ubo.SetMaterial	(PhongMaterial::CreateBasicMaterial(glm::vec3(0.0f, 1.0f, 0.0f), true, 200.0f, 1.0f));
 	BlueMaterial_ubo.SetMaterial	(PhongMaterial::CreateBasicMaterial(glm::vec3(0.0f, 0.0f, 1.0f), true, 200.0f, 1.0f));
@@ -107,6 +114,7 @@ void init_scene()
 	WhiteMaterial_ubo.SetMaterial	(PhongMaterial::CreateBasicMaterial(glm::vec3(1.0f, 1.0f, 1.0f), true, 200.0f, 1.0f));
 	FloorMaterial_ubo.SetMaterial	(PhongMaterial::CreateBasicMaterial(glm::vec3(0.7f, 0.7f, 0.7f), true, 200.0f, 1.0f));
 	GlassMaterial_ubo.SetMaterial	(PhongMaterial::CreateBasicMaterial(glm::vec3(1.0f, 1.0f, 1.0f), false, 0.0f, 0.5f));
+	BlackMaterial_ubo.SetMaterial(PhongMaterial::CreateBasicMaterial(glm::vec3(0.0f), false, 0.0f, 1.0f));
 	RedMaterial_ubo.UpdateOpenGLData();
 	GreenMaterial_ubo.UpdateOpenGLData();
 	BlueMaterial_ubo.UpdateOpenGLData();
@@ -116,6 +124,7 @@ void init_scene()
 	WhiteMaterial_ubo.UpdateOpenGLData();
 	FloorMaterial_ubo.UpdateOpenGLData();
 	GlassMaterial_ubo.UpdateOpenGLData();
+	BlackMaterial_ubo.UpdateOpenGLData();
 
 	// Add the materials into our list of materials (we do not add the material for the floor, only the basic colors)
 	Colors_ubo.push_back(&RedMaterial_ubo);
@@ -342,7 +351,7 @@ void init_scene()
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, Gbuffer_NormalWS_Texture, 0);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, Gbuffer_NormalVS_Texture, 0);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT4, GL_TEXTURE_2D, Gbuffer_Albedo_Texture, 0);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, Gbuffer_Depth_Texture, 0);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, Gbuffer_Depth_Texture, 0);
 	glDrawBuffers(5, DrawBuffersConstants);
 	CheckFramebufferStatus("Gbuffer");
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -454,7 +463,7 @@ void update_scene(int app_time_diff_ms)
 		LightCameraView;
 }
 
-void draw_glass()
+void render_glass()
 {
 	if (notexture_program.IsValid())
 	{
@@ -468,8 +477,6 @@ void draw_glass()
 		// Set the data of the object
 		GlassModel_ubo.BindBuffer(DEFAULT_OBJECT_BINDING);
 
-		//notexture_program.Uniform1f("alpha", 0.5);
-
 		// Use the proper program and set its uniform variables
 		notexture_program.Use();
 
@@ -480,6 +487,58 @@ void draw_glass()
 		glDisable(GL_BLEND);
 		glDepthMask(GL_TRUE);
 	}
+}
+
+void enable_draw_to_stencil()
+{
+	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+	glDepthMask(GL_FALSE);
+	glStencilFunc(GL_NEVER, 1, 0xFF);
+	glStencilOp(GL_REPLACE, GL_KEEP, GL_KEEP);
+	glStencilMask(0xFF);
+	glClear(GL_STENCIL_BUFFER_BIT);
+}
+
+void disable_draw_to_stencil()
+{
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	glDepthMask(GL_TRUE);
+	glStencilMask(0x00);
+}
+
+void render_cel_stuff()
+{
+	if (!expand_program.IsValid())
+	{
+		return;
+	}
+
+	glEnable(GL_CULL_FACE);
+	glCullFace(GL_FRONT);
+
+	// Render all objects in the scene
+	for (auto iter = ObjectsInScene.begin(); iter != ObjectsInScene.end(); ++iter)
+	{
+		expand_program.Use();
+		BlackMaterial_ubo.BindBuffer(DEFAULT_MATERIAL_BINDING);
+
+		// Set the data of the object
+		if (iter->model_ubo)
+			iter->model_ubo->BindBuffer(DEFAULT_OBJECT_BINDING);
+
+		// Set the texture
+		glActiveTexture(GL_TEXTURE1);	glBindTexture(GL_TEXTURE_2D, iter->texture);
+
+		// Render the object
+		if (iter->geometry)
+		{
+			iter->geometry->BindVAO();
+			iter->geometry->Draw();
+		}
+	}
+
+	glCullFace(GL_BACK);
+	glDisable(GL_CULL_FACE);
 }
 
 void render_stuff_once(bool gen_shadows)
@@ -514,7 +573,9 @@ void render_stuff_once(bool gen_shadows)
 				iter->shading_program->UniformMatrix4fv("shadow_matrix", 1, GL_FALSE, glm::value_ptr(ShadowMatrix));
 			}
 			else
+			{
 				continue;
+			}
 		}
 
 		// Set the data of the material
@@ -541,58 +602,10 @@ void render_stuff_once(bool gen_shadows)
 	}
 }
 
-/// Renders the whole frame
-void render_scene()
+void evaluate_ssao()
 {
-	// Start measuring the elapsed time
-	glBeginQuery(GL_TIME_ELAPSED, RenderTimeQuery);
-
-	//--------------------------------------
-	//--  Render into the shadow texture  --
-
-	glBindFramebuffer(GL_FRAMEBUFFER, ShadowFBO);
-	glViewport(0, 0, ShadowTexSize, ShadowTexSize);
-
-	// Clear the framebuffer, clear only the depth (there is no color)
-	glClearDepth(1.0);
-	glClear(GL_DEPTH_BUFFER_BIT);
-	glEnable(GL_DEPTH_TEST);
-
-	LightCameraData_ubo.BindBuffer(DEFAULT_CAMERA_BINDING);
-
-	render_stuff_once(true);
-
-	//----------------------------------------------
-	//--  First, render the scene into the G-buffer
-
-	glBindFramebuffer(GL_FRAMEBUFFER, Gbuffer_FBO);
-	glViewport(0, 0, win_width, win_height);
-
-	// Clear the G-buffer, i.e., clear all textures to (0,0,0,0) and depth to 1.0
-	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-	glClearDepth(1.0);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-	glEnable(GL_DEPTH_TEST);
-
-	CameraData_ubo.BindBuffer(DEFAULT_CAMERA_BINDING);
-	PhongLights_ubo.BindBuffer(DEFAULT_LIGHTS_BINDING);
-
-	render_stuff_once(false);
-
-	glDisable(GL_DEPTH_TEST);
-
-	//----------------------------------------------
-	//--  Evaluate the SSAO (when necessary)
-
-	// niekde ma byt glass
-	//draw_glass();
-
 	if (evaluate_ssao_program.IsValid())
 	{
-		//----------------------------------------------
-		//--  Evaluate the SSAO
-
 		// Bind the proper framebuffer
 		glBindFramebuffer(GL_FRAMEBUFFER, SSAO_Evaluation_FBO);
 		glViewport(0, 0, win_width, win_height);
@@ -615,87 +628,12 @@ void render_scene()
 		geom_fullscreen_quad.BindVAO();
 		geom_fullscreen_quad.Draw();
 	}
+}
 
-	// dalsi pass
-
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	glViewport(0, 0, win_width, win_height);
-
-	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-	glClearDepth(1.0);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-	if (what_to_display == 1)
+void render_ssao_final(bool toon_rendering)
+{
+	if (evaluate_lighting_program.IsValid())
 	{
-		display_texture_program.Use();
-		// Set the transformation texture - scale the position to 0.1
-		display_texture_program.UniformMatrix4fv("transformation", 1, GL_FALSE, glm::value_ptr(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f))));
-		// Bind the proper texture
-		glActiveTexture(GL_TEXTURE0);	glBindTexture(GL_TEXTURE_2D, Gbuffer_PositionWS_Texture);
-
-		// Render the fullscreen quad to evaluate every pixel
-		geom_fullscreen_quad.BindVAO();
-		geom_fullscreen_quad.Draw();
-	}
-	else if (what_to_display == 2)
-	{
-		display_texture_program.Use();
-		// Set the transformation texture - no scale
-		display_texture_program.UniformMatrix4fv("transformation", 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
-		// Bind the proper texture
-		glActiveTexture(GL_TEXTURE0);	glBindTexture(GL_TEXTURE_2D, Gbuffer_NormalWS_Texture);
-
-		// Render the fullscreen quad to evaluate every pixel
-		geom_fullscreen_quad.BindVAO();
-		geom_fullscreen_quad.Draw();
-	}
-	else if (what_to_display == 3)
-	{
-		display_texture_program.Use();
-		// Set the transformation texture - no scale
-		display_texture_program.UniformMatrix4fv("transformation", 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
-		// Bind the proper texture
-		glActiveTexture(GL_TEXTURE0);	glBindTexture(GL_TEXTURE_2D, Gbuffer_Albedo_Texture);
-
-		// Render the fullscreen quad to evaluate every pixel
-		geom_fullscreen_quad.BindVAO();
-		geom_fullscreen_quad.Draw();
-	}
-	else if (what_to_display == 4)
-	{
-		display_texture_program.Use();
-		// Set the transformation texture - duplicate red channel, the same as .rrr in swizzling
-		display_texture_program.UniformMatrix4fv("transformation", 1, GL_FALSE, glm::value_ptr(glm::mat4(
-			1.0f, 1.0f, 1.0f, 0.0f,
-			0.0f, 0.0f, 0.0f, 0.0f,
-			0.0f, 0.0f, 0.0f, 0.0f,
-			0.0f, 0.0f, 0.0f, 0.0f)));
-		// Bind the proper texture
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, SSAO_Occlusion_Texture);
-
-		// Render the fullscreen quad to evaluate every pixel
-		geom_fullscreen_quad.BindVAO();
-		geom_fullscreen_quad.Draw();
-	}
-	else if (what_to_display == 5)
-	{
-		// Use a special shader and render the shadow texture in grayscale
-		display_shadow_texture_program.Use();
-		glDisable(GL_DEPTH_TEST);
-
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, ShadowTexture);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
-
-		geom_fullscreen_quad.BindVAO();
-		geom_fullscreen_quad.Draw();
-	}
-	else if (evaluate_lighting_program.IsValid())
-	{
-		//----------------------------------------------
-		//--  Evaluate the lighting and display the final image, with or without DoF
-		
 		// Bind all textures that we need
 		glActiveTexture(GL_TEXTURE0);	glBindTexture(GL_TEXTURE_2D, Gbuffer_PositionWS_Texture);
 		glActiveTexture(GL_TEXTURE1);	glBindTexture(GL_TEXTURE_2D, Gbuffer_NormalWS_Texture);
@@ -708,11 +646,95 @@ void render_scene()
 		WhiteMaterial_ubo.BindBuffer(DEFAULT_MATERIAL_BINDING);		// Bind the data with the specular color and shininess (all materials have the same)
 
 		evaluate_lighting_program.Use();
+		evaluate_lighting_program.Uniform1i("use_toon", toon_rendering ? 1 : 0);
 
 		// Render the fullscreen quad to evaluate every pixel
 		geom_fullscreen_quad.BindVAO();
 		geom_fullscreen_quad.Draw();
 	}
+}
+
+/// Renders the whole frame
+void render_scene()
+{
+	// Start measuring the elapsed time
+	glBeginQuery(GL_TIME_ELAPSED, RenderTimeQuery);
+
+	//--------------------------------------
+	//--  Render into the shadow texture  --
+
+	//glBindFramebuffer(GL_FRAMEBUFFER, ShadowFBO);
+	//glViewport(0, 0, ShadowTexSize, ShadowTexSize);
+
+	//// Clear the framebuffer, clear only the depth (there is no color)
+	//glClearDepth(1.0);
+	//glClear(GL_DEPTH_BUFFER_BIT);
+	//glEnable(GL_DEPTH_TEST);
+
+	//LightCameraData_ubo.BindBuffer(DEFAULT_CAMERA_BINDING);
+
+	//render_stuff_once(true);
+
+	//----------------------------------------------
+	//--  First, render the scene into the G-buffer
+
+	glBindFramebuffer(GL_FRAMEBUFFER, Gbuffer_FBO);
+	glViewport(0, 0, win_width, win_height);
+
+	// Clear the G-buffer, i.e., clear all textures to (0,0,0,0) and depth to 1.0
+	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+	glClearDepth(1.0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glEnable(GL_DEPTH_TEST);
+
+	CameraData_ubo.BindBuffer(DEFAULT_CAMERA_BINDING);
+	PhongLights_ubo.BindBuffer(DEFAULT_LIGHTS_BINDING);
+
+	// sklo do stencil bufferu
+	glEnable(GL_STENCIL_TEST);
+	enable_draw_to_stencil();
+	render_glass();
+	disable_draw_to_stencil();
+
+	// mimo glass
+	glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
+	render_cel_stuff();
+	glDisable(GL_STENCIL_TEST);
+
+	render_stuff_once(false);
+	
+	glDisable(GL_DEPTH_TEST);
+
+	//----------------------------------------------
+	//--  Evaluate the SSAO (when necessary)
+
+	// niekde ma byt glass
+	render_glass();
+
+	evaluate_ssao();
+
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glViewport(0, 0, win_width, win_height);
+
+	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+	glClearDepth(1.0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	// sklo do stencil bufferu
+	glEnable(GL_STENCIL_TEST);
+	enable_draw_to_stencil();
+	render_glass();
+	disable_draw_to_stencil();
+
+	// mimo glass
+	glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
+	render_ssao_final(true);
+
+	// vnutri glass
+	glStencilFunc(GL_NOTEQUAL, 0, 0xFF);
+	render_ssao_final(false);
+
+	glDisable(GL_STENCIL_TEST);
 
 	//----------------------------------------------
 
@@ -745,7 +767,7 @@ void resize_fullscreen_textures()
 	glBindTexture(GL_TEXTURE_2D, Gbuffer_Albedo_Texture);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, win_width, win_height, 0, GL_RGBA, GL_FLOAT, nullptr);
 	glBindTexture(GL_TEXTURE_2D, Gbuffer_Depth_Texture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, win_width, win_height, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, nullptr);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, win_width, win_height, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, nullptr);
 	glBindTexture(GL_TEXTURE_2D, SSAO_Occlusion_Texture);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, win_width, win_height, 0, GL_RED, GL_FLOAT, nullptr);
 	glBindTexture(GL_TEXTURE_2D, 0);

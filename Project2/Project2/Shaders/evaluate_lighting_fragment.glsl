@@ -62,6 +62,8 @@ layout (binding = 1) uniform sampler2D normals_ws_tex;
 layout (binding = 2) uniform sampler2D albedo_tex;
 layout (binding = 3) uniform sampler2D ssao_tex;
 
+uniform bool use_toon;
+
 //-----------------------------------------------------------------------
 
 void main()
@@ -84,6 +86,18 @@ void main()
 	{
 		vec3 a, d, s;
 		EvaluatePhongLight(lights[i], a, d, s, N, position_ws, Eye, material.shininess);
+		if (use_toon)
+		{
+			// toon shading dif
+			if (d.x < 0.4)				d = vec3(0.2);
+			else if (d.x < 0.6)			d = vec3(0.5);
+			else if (d.x < 0.8)			d = vec3(0.8);
+			else						d = vec3(1.0);
+
+			// toon shading spe
+			if (s.x < 0.6)				s = vec3(0.0);
+			else						s = vec3(1.0);
+		}
 		amb += a;	dif += d;	spe += s;
 	}
 

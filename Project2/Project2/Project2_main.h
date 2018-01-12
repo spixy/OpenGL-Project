@@ -18,6 +18,7 @@ ShaderProgram evaluate_lighting_program;
 ShaderProgram evaluate_ssao_program;
 ShaderProgram gen_shadow_program;
 ShaderProgram display_shadow_texture_program;
+ShaderProgram expand_program;
 
 // Geometries we use in this lecture
 Geometry geom_cube;
@@ -55,6 +56,7 @@ MaterialData_UBO YellowMaterial_ubo;
 MaterialData_UBO WhiteMaterial_ubo;
 MaterialData_UBO FloorMaterial_ubo;
 MaterialData_UBO GlassMaterial_ubo;
+MaterialData_UBO BlackMaterial_ubo;
 // List of materials which we choose for our scene
 std::vector<MaterialData_UBO *> Colors_ubo;
 
@@ -113,8 +115,13 @@ void init_scene();
 void update_scene(int app_time_diff_ms);
 void render_scene();
 void resize_fullscreen_textures();
-void draw_glass();
+void render_glass();
 void render_stuff_once(bool gen_shadows);
+void enable_draw_to_stencil();
+void disable_draw_to_stencil();
+void render_cel_stuff();
+void evaluate_ssao();
+void render_ssao_final(bool toon_rendering);
 
 //-------------------
 //----    GUI    ----
@@ -137,13 +144,13 @@ void init_gui();
 //----    APPLICATION    ----
 
 // Current window size
-int win_width = 640;
-int win_height = 480;
+int win_width = 1280;
+int win_height = 720;
 
 // Current time of the application in milliseconds, for animations
 int app_time_ms = 0;
 int last_glut_time = 0;
 int what_to_display = 0;
 
-const float SSAO_Radius = 0.5f;
+const float SSAO_Radius = 0.3f;
 const int ShadowTexSize = 1024;

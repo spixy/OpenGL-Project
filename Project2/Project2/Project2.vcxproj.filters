@@ -85,6 +85,9 @@
     <None Include="Shaders\nothing_fragment.glsl">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="Shaders\expand_vertex.glsl">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Project2_main.h">
