@@ -94,10 +94,9 @@ void main()
 	vec3 spe = vec3(0.0);
 
 	//for (int i = 0; i < lights_count; i++)
-	int i = 0;
 	{
 		vec3 a, d, s;
-		EvaluatePhongLight(lights[i], a, d, s, N, position_ws, Eye, material.shininess);
+		EvaluatePhongLight(lights[0], a, d, s, N, position_ws, Eye, material.shininess);
 
 		if (compute_toon_and_shadow)
 		{
