@@ -45,6 +45,11 @@ void reload_shaders()
 	evaluate_lighting_program.AddFragmentShader("Shaders/evaluate_lighting_fragment.glsl");
 	evaluate_lighting_program.Link();
 
+	ignore_ssao_program.Init();
+	ignore_ssao_program.AddVertexShader("Shaders/fullscreen_quad_vertex.glsl");
+	ignore_ssao_program.AddFragmentShader("Shaders/ignore_ssao_fragment.glsl");
+	ignore_ssao_program.Link();
+
 	evaluate_ssao_program.Init();
 	evaluate_ssao_program.AddVertexShader("Shaders/fullscreen_quad_vertex.glsl");
 	evaluate_ssao_program.AddFragmentShader("Shaders/evaluate_ssao_fragment.glsl");
@@ -324,6 +329,7 @@ void init_scene()
 	glGenTextures(1, &Gbuffer_Albedo_Texture);
 	glGenTextures(1, &Gbuffer_Depth_Texture);
 	glGenTextures(1, &SSAO_Occlusion_Texture);
+	glGenTextures(1, &SSAO_Depth_Texture);
 	glBindTexture(GL_TEXTURE_2D, Gbuffer_PositionWS_Texture);
 	SetTexture2DParameters(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_NEAREST, GL_NEAREST);
 	glBindTexture(GL_TEXTURE_2D, Gbuffer_PositionVS_Texture);
@@ -337,6 +343,8 @@ void init_scene()
 	glBindTexture(GL_TEXTURE_2D, Gbuffer_Depth_Texture);
 	SetTexture2DParameters(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_NEAREST, GL_NEAREST);
 	glBindTexture(GL_TEXTURE_2D, SSAO_Occlusion_Texture);
+	SetTexture2DParameters(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_NEAREST, GL_NEAREST);
+	glBindTexture(GL_TEXTURE_2D, SSAO_Depth_Texture);
 	SetTexture2DParameters(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_NEAREST, GL_NEAREST);
 	glBindTexture(GL_TEXTURE_2D, 0);
 
@@ -360,6 +368,7 @@ void init_scene()
 	glGenFramebuffers(1, &SSAO_Evaluation_FBO);
 	glBindFramebuffer(GL_FRAMEBUFFER, SSAO_Evaluation_FBO);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, SSAO_Occlusion_Texture, 0);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, SSAO_Depth_Texture, 0);
 	glDrawBuffers(1, DrawBuffersConstants);
 	CheckFramebufferStatus("SSAO_Evaluation");
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -465,14 +474,18 @@ void update_scene(int app_time_diff_ms)
 		LightCameraView;
 }
 
-void render_glass()
+void render_glass(bool blended)
 {
 	if (notexture_program.IsValid())
 	{
 		// Set up depth test and blending
 		glDepthMask(GL_FALSE);
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+		if (blended)
+		{
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		}
 
 		// Set the data of the material
 		GlassMaterial_ubo.BindBuffer(DEFAULT_MATERIAL_BINDING);
@@ -486,7 +499,11 @@ void render_glass()
 		geom_glass.BindVAO();
 		geom_glass.Draw();
 
-		glDisable(GL_BLEND);
+		if (blended)
+		{
+			glDisable(GL_BLEND);
+		}
+
 		glDepthMask(GL_TRUE);
 	}
 }
@@ -609,6 +626,15 @@ void evaluate_ssao()
 	// Although the binding point 1 is usually used by the data of the lights, we do not need the lights here, so we may use this binding point
 	glBindBufferBase(GL_UNIFORM_BUFFER, 1, SSAO_Samples_UBO);
 
+	// sklo do stencil bufferu
+	glEnable(GL_STENCIL_TEST);
+	enable_draw_to_stencil();
+	render_glass(false);
+	disable_draw_to_stencil();
+
+	// mimo glass
+	glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
+
 	// Use the proper program and set its uniform variables
 	evaluate_ssao_program.Use();
 	evaluate_ssao_program.Uniform1f("SSAO_Radius", SSAO_Radius);
@@ -616,6 +642,18 @@ void evaluate_ssao()
 	// Render the fullscreen quad to evaluate every pixel
 	geom_fullscreen_quad.BindVAO();
 	geom_fullscreen_quad.Draw();
+
+	// vnutri glass
+	glStencilFunc(GL_NOTEQUAL, 0, 0xFF);
+
+	// Use the proper program and set its uniform variables
+	ignore_ssao_program.Use();
+
+	// Render the fullscreen quad to evaluate every pixel
+	geom_fullscreen_quad.BindVAO();
+	geom_fullscreen_quad.Draw();
+
+	glDisable(GL_STENCIL_TEST);
 }
 
 void display_shadow_tex()
@@ -693,7 +731,7 @@ void render_scene()
 	// sklo do stencil bufferu
 	glEnable(GL_STENCIL_TEST);
 	enable_draw_to_stencil();
-	render_glass();
+	render_glass(false);
 	disable_draw_to_stencil();
 
 	// mimo glass
@@ -706,7 +744,7 @@ void render_scene()
 	glDisable(GL_DEPTH_TEST);
 
 	// niekde ma byt glass
-	render_glass();
+	render_glass(true);
 
 	evaluate_ssao();
 
@@ -720,7 +758,7 @@ void render_scene()
 	// sklo do stencil bufferu
 	glEnable(GL_STENCIL_TEST);
 	enable_draw_to_stencil();
-	render_glass();
+	render_glass(false);
 	disable_draw_to_stencil();
 
 	// mimo glass
@@ -767,6 +805,8 @@ void resize_fullscreen_textures()
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, win_width, win_height, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, nullptr);
 	glBindTexture(GL_TEXTURE_2D, SSAO_Occlusion_Texture);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, win_width, win_height, 0, GL_RED, GL_FLOAT, nullptr);
+	glBindTexture(GL_TEXTURE_2D, SSAO_Depth_Texture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, win_width, win_height, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, nullptr);
 	glBindTexture(GL_TEXTURE_2D, 0);
 }
 
