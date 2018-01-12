@@ -147,8 +147,8 @@ void init_gui();
 //----    APPLICATION    ----
 
 // Current window size
-int win_width = 1280;
-int win_height = 720;
+int win_width = 640*2;
+int win_height = 480*2;
 
 // Current time of the application in milliseconds, for animations
 int app_time_ms = 0;

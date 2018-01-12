@@ -21,25 +21,21 @@ const float glass_quad_vertices[glass_quad_vertices_count * 8] =
 /// Reloads all shaders
 void reload_shaders()
 {
-	// Program for objects without textures
 	notexture_program.Init();
 	notexture_program.AddVertexShader("Shaders/notexture_vertex.glsl");
 	notexture_program.AddFragmentShader("Shaders/notexture_fragment.glsl");
 	notexture_program.Link();
 
-	// Program for objects with textures
 	texture_program.Init();
 	texture_program.AddVertexShader("Shaders/texture_vertex.glsl");
 	texture_program.AddFragmentShader("Shaders/texture_fragment.glsl");
 	texture_program.Link();
 
-	// Program for displaying a texture on the screen
 	display_texture_program.Init();
 	display_texture_program.AddVertexShader("Shaders/fullscreen_quad_vertex.glsl");
 	display_texture_program.AddFragmentShader("Shaders/display_texture_fragment.glsl");
 	display_texture_program.Link();
 
-	// Program for evaluating the G-buffer using a screen quad
 	evaluate_lighting_program.Init();
 	evaluate_lighting_program.AddVertexShader("Shaders/fullscreen_quad_vertex.glsl");
 	evaluate_lighting_program.AddFragmentShader("Shaders/evaluate_lighting_fragment.glsl");
@@ -55,19 +51,16 @@ void reload_shaders()
 	evaluate_ssao_program.AddFragmentShader("Shaders/evaluate_ssao_fragment.glsl");
 	evaluate_ssao_program.Link();
 
-	// Program for displaying shadow maps
 	display_shadow_texture_program.Init();
 	display_shadow_texture_program.AddVertexShader("Shaders/fullscreen_quad_vertex.glsl");
 	display_shadow_texture_program.AddFragmentShader("Shaders/display_shadow_texture_fragment.glsl");
 	display_shadow_texture_program.Link();
 
-	// Program for generating shadow maps
 	gen_shadow_program.Init();
 	gen_shadow_program.AddVertexShader("Shaders/nolit_vertex.glsl");
 	gen_shadow_program.AddFragmentShader("Shaders/nothing_fragment.glsl");
 	gen_shadow_program.Link();
 
-	// cel shading
 	expand_program.Init();
 	expand_program.AddVertexShader("Shaders/expand_vertex.glsl");
 	expand_program.AddFragmentShader("Shaders/nolit_fragment.glsl");
@@ -318,7 +311,6 @@ void init_scene()
 	SetTexture2DParameters(GL_REPEAT, GL_REPEAT, GL_NEAREST, GL_NEAREST);
 	glBindTexture(GL_TEXTURE_2D, 0);
 
-
 	//----------------------------------------------
 	//--  Prepare framebuffers
 
@@ -380,7 +372,6 @@ void init_scene()
 	CheckFramebufferStatus("ShadowFBO");
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-
 	//------------------------
 	//--  Create the glass  --
 
@@ -425,7 +416,7 @@ void init_scene()
 	// Data of the camera that is used when rendering from the light
 	LightCameraView = glm::lookAt(
 		glm::vec3(PhongLights_ubo.PhongLights[0].position),
-		glm::vec3(PhongLights_ubo.PhongLights[0].position) + PhongLights_ubo.PhongLights[0].spot_direction,
+		glm::vec3(0.0f, 1.0f, 0.0f),
 		glm::vec3(0.0f, 1.0f, 0.0f));
 	LightCameraData_ubo.SetCamera(LightCameraView);
 	LightCameraData_ubo.UpdateOpenGLData();
@@ -581,7 +572,7 @@ void render_stuff_once(bool gen_shadows)
 			if (iter->shading_program && iter->shading_program->IsValid())
 			{
 				iter->shading_program->Use();
-				iter->shading_program->UniformMatrix4fv("shadow_matrix", 1, GL_FALSE, glm::value_ptr(ShadowMatrix));
+				//iter->shading_program->UniformMatrix4fv("shadow_matrix", 1, GL_FALSE, glm::value_ptr(ShadowMatrix));
 			}
 			else continue;
 		}

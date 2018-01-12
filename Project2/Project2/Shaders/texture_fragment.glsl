@@ -64,47 +64,12 @@ layout (std140, binding = 1) uniform PhongLightsData
 // Data of the object
 layout (binding = 0) uniform sampler2DShadow shadow_tex;
 layout (binding = 1) uniform sampler2D object_tex;
-uniform mat4 shadow_matrix;
-
-// Evaluates the lighting of one Phong light. The implementation is at the end of the file
-void EvaluatePhongLight(in PhongLight light, out vec3 amb, out vec3 dif, out vec3 spe, in vec3 normal, in vec3 position, in vec3 eye, in float shininess);
 
 //-----------------------------------------------------------------------
 
 void main()
 {
-	/*
-	// Coordinate for the shadow
-	vec4 shadow_tex_coord = shadow_matrix * vec4(inData.position_ws, 1.0);
-	//float shadow_factor = texture(shadow_tex, shadow_tex_coord.xy / shadow_tex_coord.w).r;
-	//float shadow_factor = (shadow_tex_coord.z / shadow_tex_coord.w) < texture(shadow_tex, shadow_tex_coord.xy / shadow_tex_coord.w).r ? 1.0 : 0.0;
-	//float shadow_factor = texture(shadow_tex, shadow_tex_coord.xyz / shadow_tex_coord.w);
-	float shadow_factor = textureProj(shadow_tex, shadow_tex_coord);
-
-    vec3 tex_color = texture(object_tex, inData.tex_coord).rgb;
-
-	// Compute the lighting
-    vec3 N = normalize(inData.normal_ws);
-    vec3 Eye = normalize(eye_position - inData.position_ws);
-
-    vec3 a, d, s;
-    EvaluatePhongLight(lights[0], a, d, s, N, inData.position_ws, Eye, material.shininess);
-    vec3 amb = global_ambient_color + a;
-    vec3 dif = d;
-    vec3 spe = s;
-	
-	d *= shadow_factor;
-	s *= shadow_factor;
-    
-	// Compute the material
-    vec3 mat_ambient = tex_color;
-    vec3 mat_diffuse = tex_color;
-    vec3 mat_specular = material.specular;
-
-	// Compute the final color
-    vec3 final_light = mat_ambient * amb + mat_diffuse * dif + mat_specular * spe;
-    deferred_albedo = vec4(final_light, material.alpha);
-	*/
+    // shadow by sa dal pocitat aj tu
     deferred_albedo = texture(object_tex, inData.tex_coord);
 	deferred_position_ws = vec4(inData.position_ws, 1.0);
 	deferred_position_vs = vec4(inData.position_vs, 1.0);
@@ -113,64 +78,3 @@ void main()
 }
 
 //-----------------------------------------------------------------------
-
-// Evaluates the lighting of one Phong light
-// light	.. [in] parameters of the light that is evaluated
-// amb		.. [out] result, ambient part
-// dif		.. [out] result, diffuse part
-// spe		.. [out] result, specular part
-// norm		.. [in] surface normal, in the world coordinates
-// pos		.. [in] surface position, in the world coordinates
-// eye		.. [in] direction from the surface to the eye, in the world coordinates
-// shi		.. [in] shininess of the material
-void EvaluatePhongLight(in PhongLight light, out vec3 amb, out vec3 dif, out vec3 spe, in vec3 norm, in vec3 pos, in vec3 eye, in float shi)
-{
-    vec3 L_not_normalized = light.position.xyz - pos * light.position.w;
-    vec3 L = normalize(L_not_normalized);
-    vec3 H = normalize(L + eye);
-
-	// Calculate basic Phong factors
-    float Iamb = 1.0;
-    float Idif = max(dot(norm, L), 0.0);
-    float Ispe = (Idif > 0.0) ? pow(max(dot(norm, H), 0.0), shi) : 0.0;
-
-	// Calculate spot light factor
-    if (light.spot_cos_cutoff != -1.0)
-    {
-		// This is a spot light
-        float spot_factor;
-
-        float spot_cos_angle = dot(-L, light.spot_direction);
-        if (spot_cos_angle > light.spot_cos_cutoff)
-        {
-            spot_factor = pow(spot_cos_angle, light.spot_exponent);
-        }
-        else
-            spot_factor = 0.0;
-
-        Iamb *= 1.0;
-        Idif *= spot_factor;
-        Ispe *= spot_factor;
-    }
-
-	// Calculate attenuation
-    if (light.position.w != 0.0)
-    {
-		// This is a point light / spot light
-
-        float distance_from_light = length(L_not_normalized);
-        float atten_factor =
-			light.atten_constant +
-			light.atten_linear * distance_from_light +
-			light.atten_quadratic * distance_from_light * distance_from_light;
-        atten_factor = 1.0 / atten_factor;
-
-        Iamb *= atten_factor;
-        Idif *= atten_factor;
-        Ispe *= atten_factor;
-    }
-
-    amb = Iamb * light.ambient;
-    dif = Idif * light.diffuse;
-    spe = Ispe * light.specular;
-}
