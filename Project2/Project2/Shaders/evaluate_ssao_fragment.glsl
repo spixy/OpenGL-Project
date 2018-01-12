@@ -34,12 +34,25 @@ layout (binding = 2) uniform sampler2D random_tangent_vs_tex;
 // Radius of the SSAO hemisphere which is sampled
 uniform float SSAO_Radius;
 
+float compute_ssao();
+
 //-----------------------------------------------------------------------
 
 void main()
 {
+	final_occlusion = compute_ssao();
+}
+
+//-----------------------------------------------------------------------
+
+float compute_ssao()
+{
 	// Position and normal in view space
 	vec4 position_vs = texture(position_vs_tex, inData.tex_coord);
+
+	if (position_vs.w == 0.0)
+		return 0.0;		// We processed a pixel of the background, we set its final occlusion to zero
+
 	vec3 normal_vs = normalize(texture(normal_vs_tex, inData.tex_coord).xyz);
 
 	// Compute tangent and bitangent (in view space), randomly rotated around z-axis.
@@ -100,12 +113,8 @@ void main()
 	}
 
 	// Compute the final occlusion
-	if (position_vs.w == 0.0)
-		final_occlusion = 0.0;		// We processed a pixel of the background, we set its final occlusion to zero
-	else if (occluded_test_count == 0.0)
-		final_occlusion = 1.0;		// We found no valid sample to test, so we say there is no occlusion
+	if (occluded_test_count == 0.0)
+		return 1.0;		// We found no valid sample to test, so we say there is no occlusion
 	else
-		final_occlusion = 1.0 - occluded_samples / occluded_test_count;		// More occluded samples -> less ambient light
+		return 1.0 - occluded_samples / occluded_test_count;		// More occluded samples -> less ambient light
 }
-
-//-----------------------------------------------------------------------
