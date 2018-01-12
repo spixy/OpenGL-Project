@@ -66,6 +66,11 @@ void reload_shaders()
 	expand_program.AddFragmentShader("Shaders/nolit_fragment.glsl");
 	expand_program.Link();
 
+	blur_ssao_program.Init();
+	blur_ssao_program.AddVertexShader("Shaders/fullscreen_quad_vertex.glsl");
+	blur_ssao_program.AddFragmentShader("Shaders/blur_ssao_texture_fragment.glsl");
+	blur_ssao_program.Link();
+
 	cout << "Shaders are reloaded" << endl;
 }
 
@@ -321,6 +326,7 @@ void init_scene()
 	glGenTextures(1, &Gbuffer_Albedo_Texture);
 	glGenTextures(1, &Gbuffer_Depth_Texture);
 	glGenTextures(1, &SSAO_Occlusion_Texture);
+	glGenTextures(1, &SSAO_Blurred_Occlusion_Texture);
 	glGenTextures(1, &SSAO_Depth_Texture);
 	glBindTexture(GL_TEXTURE_2D, Gbuffer_PositionWS_Texture);
 	SetTexture2DParameters(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_NEAREST, GL_NEAREST);
@@ -335,6 +341,8 @@ void init_scene()
 	glBindTexture(GL_TEXTURE_2D, Gbuffer_Depth_Texture);
 	SetTexture2DParameters(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_NEAREST, GL_NEAREST);
 	glBindTexture(GL_TEXTURE_2D, SSAO_Occlusion_Texture);
+	SetTexture2DParameters(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_NEAREST, GL_NEAREST);
+	glBindTexture(GL_TEXTURE_2D, SSAO_Blurred_Occlusion_Texture);
 	SetTexture2DParameters(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_NEAREST, GL_NEAREST);
 	glBindTexture(GL_TEXTURE_2D, SSAO_Depth_Texture);
 	SetTexture2DParameters(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_NEAREST, GL_NEAREST);
@@ -363,6 +371,14 @@ void init_scene()
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, SSAO_Depth_Texture, 0);
 	glDrawBuffers(1, DrawBuffersConstants);
 	CheckFramebufferStatus("SSAO_Evaluation");
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	// Create the SSAO_Evaluation_FBO framebuffer
+	glGenFramebuffers(1, &SSAO_Bluring_FBO);
+	glBindFramebuffer(GL_FRAMEBUFFER, SSAO_Bluring_FBO);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, SSAO_Blurred_Occlusion_Texture, 0);
+	glDrawBuffers(1, DrawBuffersConstants);
+	CheckFramebufferStatus("SSAO_Bluring");
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 	// Create the framebuffer for rendering into the shadow texture, and set the shadow texture to it
@@ -421,11 +437,7 @@ void init_scene()
 	LightCameraData_ubo.SetCamera(LightCameraView);
 	LightCameraData_ubo.UpdateOpenGLData();
 
-	ShadowMatrix =
-		glm::translate(glm::mat4(1.0f), glm::vec3(0.5f)) *
-		glm::scale(glm::mat4(1.0f), glm::vec3(0.5f)) *
-		LightCameraProjection *
-		LightCameraView;
+	ShadowMatrix = shadow_matrix_translation * LightCameraProjection * LightCameraView;
 
 	// Create the query object
 	glGenQueries(1, &RenderTimeQuery);
@@ -439,12 +451,10 @@ void update_scene(int app_time_diff_ms)
 	CameraData_ubo.SetCamera(the_camera);
 	CameraData_ubo.UpdateOpenGLData();
 
-	glm::vec3 light_position = glm::vec3(
+	glm::vec3 light_position = 15.0f * glm::vec3(
 		cosf(light_pos / 6.0f) * sinf(light_pos),
 		sinf(light_pos / 6.0f),
 		cosf(light_pos / 6.0f) * cosf(light_pos));
-
-	light_position *= 15.0f;
 
 	// Data of the lights
 	PhongLights_ubo.PhongLights.clear();
@@ -458,11 +468,7 @@ void update_scene(int app_time_diff_ms)
 	LightCameraData_ubo.SetCamera(LightCameraView);
 	LightCameraData_ubo.UpdateOpenGLData();
 
-	ShadowMatrix =
-		glm::translate(glm::mat4(1.0f), glm::vec3(0.5f)) *
-		glm::scale(glm::mat4(1.0f), glm::vec3(0.5f)) *
-		LightCameraProjection *
-		LightCameraView;
+	ShadowMatrix = shadow_matrix_translation * LightCameraProjection * LightCameraView;
 }
 
 void render_glass(bool blended)
@@ -553,12 +559,6 @@ void render_stuff_once(bool gen_shadows)
 		glEnable(GL_CULL_FACE);
 		glCullFace(GL_FRONT);
 	}
-	else
-	{
-		glActiveTexture(GL_TEXTURE0);	glBindTexture(GL_TEXTURE_2D, ShadowTexture);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
-	}
 
 	// Render all objects in the scene
 	for (auto iter = ObjectsInScene.begin(); iter != ObjectsInScene.end(); ++iter)
@@ -585,7 +585,7 @@ void render_stuff_once(bool gen_shadows)
 			iter->model_ubo->BindBuffer(DEFAULT_OBJECT_BINDING);
 
 		// Set the texture
-		glActiveTexture(GL_TEXTURE1);	glBindTexture(GL_TEXTURE_2D, iter->texture);
+		glActiveTexture(GL_TEXTURE0);	glBindTexture(GL_TEXTURE_2D, iter->texture);
 
 		// Render the object
 		if (iter->geometry)
@@ -647,6 +647,19 @@ void evaluate_ssao()
 	glDisable(GL_STENCIL_TEST);
 }
 
+void blur_ssao()
+{
+	glBindFramebuffer(GL_FRAMEBUFFER, SSAO_Bluring_FBO);
+	glViewport(0, 0, win_width, win_height);
+
+	glActiveTexture(GL_TEXTURE0);	glBindTexture(GL_TEXTURE_2D, SSAO_Occlusion_Texture);
+
+	blur_ssao_program.Use();
+
+	geom_fullscreen_quad.BindVAO();
+	geom_fullscreen_quad.Draw();
+}
+
 void display_shadow_tex()
 {
 	// Use a special shader and render the shadow texture in grayscale
@@ -667,7 +680,7 @@ void render_ssao_final(bool shadow_toon_rendering)
 	glActiveTexture(GL_TEXTURE0);	glBindTexture(GL_TEXTURE_2D, Gbuffer_PositionWS_Texture);
 	glActiveTexture(GL_TEXTURE1);	glBindTexture(GL_TEXTURE_2D, Gbuffer_NormalWS_Texture);
 	glActiveTexture(GL_TEXTURE2);	glBindTexture(GL_TEXTURE_2D, Gbuffer_Albedo_Texture);
-	glActiveTexture(GL_TEXTURE3);	glBindTexture(GL_TEXTURE_2D, SSAO_Occlusion_Texture);
+	glActiveTexture(GL_TEXTURE3);	glBindTexture(GL_TEXTURE_2D, SSAO_Blurred_Occlusion_Texture);
 	glActiveTexture(GL_TEXTURE4);	glBindTexture(GL_TEXTURE_2D, ShadowTexture);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
@@ -739,6 +752,8 @@ void render_scene()
 
 	evaluate_ssao();
 
+	blur_ssao();
+
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glViewport(0, 0, win_width, win_height);
 
@@ -777,6 +792,8 @@ void render_scene()
 	GLuint64 render_time;
 	glGetQueryObjectui64v(RenderTimeQuery, GL_QUERY_RESULT, &render_time);
 	render_time_ms = float(render_time) * 1e-6f;
+
+	// :)
 }
 
 void resize_fullscreen_textures()
@@ -795,6 +812,8 @@ void resize_fullscreen_textures()
 	glBindTexture(GL_TEXTURE_2D, Gbuffer_Depth_Texture);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, win_width, win_height, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, nullptr);
 	glBindTexture(GL_TEXTURE_2D, SSAO_Occlusion_Texture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, win_width, win_height, 0, GL_RED, GL_FLOAT, nullptr);
+	glBindTexture(GL_TEXTURE_2D, SSAO_Blurred_Occlusion_Texture);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, win_width, win_height, 0, GL_RED, GL_FLOAT, nullptr);
 	glBindTexture(GL_TEXTURE_2D, SSAO_Depth_Texture);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, win_width, win_height, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, nullptr);

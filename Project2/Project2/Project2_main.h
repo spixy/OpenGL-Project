@@ -20,6 +20,7 @@ ShaderProgram ignore_ssao_program;
 ShaderProgram gen_shadow_program;
 ShaderProgram display_shadow_texture_program;
 ShaderProgram expand_program;
+ShaderProgram blur_ssao_program;
 
 // Geometries we use in this lecture
 Geometry geom_cube;
@@ -105,7 +106,9 @@ GLuint Gbuffer_Depth_Texture;		// Texture with depths for depth test
 
 									// FBO for evaluation of the SSAO
 GLuint SSAO_Evaluation_FBO;					// Framebuffer object that is used to evaluate SSAO
+GLuint SSAO_Bluring_FBO;					
 GLuint SSAO_Occlusion_Texture;				// Texture with ambient occlusion
+GLuint SSAO_Blurred_Occlusion_Texture;				// Texture with ambient occlusion
 GLuint SSAO_Depth_Texture;
 
 // OpenGL query object to get render time of one frame
@@ -125,6 +128,11 @@ void render_cel_stuff();
 void evaluate_ssao();
 void render_ssao_final(bool shadow_toon_rendering);
 void display_shadow_tex();
+void blur_ssao();
+
+// cache
+glm::mat4 shadow_matrix_translation = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -0.0015f)) * glm::translate(glm::mat4(1.0f), glm::vec3(0.5f)) * 
+	glm::scale(glm::mat4(1.0f), glm::vec3(0.5f));
 
 //-------------------
 //----    GUI    ----
@@ -155,5 +163,6 @@ int app_time_ms = 0;
 int last_glut_time = 0;
 int what_to_display = 0;
 
-const float SSAO_Radius = 0.4f;
+// config
+const float SSAO_Radius = 0.5f;
 const int ShadowTexSize = 1024;

@@ -62,14 +62,12 @@ layout (std140, binding = 1) uniform PhongLightsData
 };
 
 // Data of the object
-layout (binding = 0) uniform sampler2DShadow shadow_tex;
-layout (binding = 1) uniform sampler2D object_tex;
+layout (binding = 0) uniform sampler2D object_tex;
 
 //-----------------------------------------------------------------------
 
 void main()
 {
-    // shadow by sa dal pocitat aj tu
     deferred_albedo = texture(object_tex, inData.tex_coord);
 	deferred_position_ws = vec4(inData.position_ws, 1.0);
 	deferred_position_vs = vec4(inData.position_vs, 1.0);

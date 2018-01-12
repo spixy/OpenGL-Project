@@ -36,7 +36,7 @@ layout (std140, binding = 2) uniform ModelData
 
 void main()
 {
-	vec4 pos = position + vec4(normal, 0.0) * 0.04;
+	vec4 pos = position + vec4(normal, 0.0) * 0.015;
 	
 	outData.position_ws = vec3(model * pos);
 	outData.position_vs = vec3(view * model * pos);

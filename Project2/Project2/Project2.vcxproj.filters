@@ -91,6 +91,9 @@
     <None Include="Shaders\ignore_ssao_fragment.glsl">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="Shaders\blur_ssao_texture_fragment.glsl">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Project2_main.h">

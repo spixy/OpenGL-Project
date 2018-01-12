@@ -124,6 +124,7 @@
     <None Include="..\..\inlines\tangentteapotpatch.inl" />
     <None Include="..\..\inlines\tangenttorus.inl" />
     <None Include="..\..\inlines\tangentteapot.inl" />
+    <None Include="Shaders\blur_ssao_texture_fragment.glsl" />
     <None Include="Shaders\display_shadow_texture_fragment.glsl" />
     <None Include="Shaders\display_texture_fragment.glsl" />
     <None Include="Shaders\evaluate_lighting_fragment.glsl" />

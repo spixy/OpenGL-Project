@@ -67,7 +67,6 @@ layout (std140, binding = 1) uniform PhongLightsData
 
 void main()
 {
-    // shadow by sa dal pocitat aj tu
     deferred_albedo = vec4(material.diffuse, material.alpha);
     deferred_position_ws = vec4(inData.position_ws, 1.0);
     deferred_position_vs = vec4(inData.position_vs, 1.0);
