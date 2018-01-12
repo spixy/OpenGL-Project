@@ -70,8 +70,16 @@ void EvaluatePhongLight(in PhongLight light, out vec3 amb, out vec3 dif, out vec
 
 void main()
 {
+    /*
+	// Coordinate for the shadow
+	vec4 shadow_tex_coord = shadow_matrix * vec4(inData.position_ws, 1.0);
+	//float shadow_factor = texture(shadow_tex, shadow_tex_coord.xy / shadow_tex_coord.w).r;
+	//float shadow_factor = (shadow_tex_coord.z / shadow_tex_coord.w) < texture(shadow_tex, shadow_tex_coord.xy / shadow_tex_coord.w).r ? 1.0 : 0.0;
+	//float shadow_factor = texture(shadow_tex, shadow_tex_coord.xyz / shadow_tex_coord.w);
+	float shadow_factor = textureProj(shadow_tex, shadow_tex_coord);
+
 	// Compute the lighting
-    /*vec3 N = normalize(inData.normal_ws);
+    vec3 N = normalize(inData.normal_ws);
     vec3 Eye = normalize(eye_position - inData.position_ws);
 
     vec3 amb = global_ambient_color;
@@ -84,14 +92,18 @@ void main()
     dif += d;
     spe += s;
     
+	d *= shadow_factor;
+	s *= shadow_factor;
+
 	// Compute the material
     vec3 mat_ambient = material.ambient;
     vec3 mat_diffuse = material.diffuse;
     vec3 mat_specular = material.specular;
 
 	// Compute the final color
-    vec3 final_light = mat_ambient * amb + mat_diffuse * dif + mat_specular * spe;*/
-
+    vec3 final_light = mat_ambient * amb + mat_diffuse * dif + mat_specular * spe;
+    deferred_albedo = vec4(final_light, material.alpha);
+    */
     deferred_albedo = vec4(material.diffuse, material.alpha);
     deferred_position_ws = vec4(inData.position_ws, 1.0);
     deferred_position_vs = vec4(inData.position_vs, 1.0);

@@ -444,6 +444,8 @@ void update_scene(int app_time_diff_ms)
 		sinf(light_pos / 6.0f),
 		cosf(light_pos / 6.0f) * cosf(light_pos));
 
+	light_position *= 15.0f;
+
 	// Data of the lights
 	PhongLights_ubo.PhongLights.clear();
 	PhongLights_ubo.PhongLights.push_back(PhongLight::CreateDirectionalLight(light_position, glm::vec3(0.7f), glm::vec3(0.3f), glm::vec3(0.0f)));
@@ -508,11 +510,6 @@ void disable_draw_to_stencil()
 
 void render_cel_stuff()
 {
-	if (!expand_program.IsValid())
-	{
-		return;
-	}
-
 	glEnable(GL_CULL_FACE);
 	glCullFace(GL_FRONT);
 
@@ -560,10 +557,7 @@ void render_stuff_once(bool gen_shadows)
 	{
 		if (gen_shadows)
 		{
-			if (gen_shadow_program.IsValid())
-				gen_shadow_program.Use();
-			else
-				continue;
+			gen_shadow_program.Use();
 		}
 		else
 		{
@@ -572,10 +566,7 @@ void render_stuff_once(bool gen_shadows)
 				iter->shading_program->Use();
 				iter->shading_program->UniformMatrix4fv("shadow_matrix", 1, GL_FALSE, glm::value_ptr(ShadowMatrix));
 			}
-			else
-			{
-				continue;
-			}
+			else continue;
 		}
 
 		// Set the data of the material
@@ -604,54 +595,66 @@ void render_stuff_once(bool gen_shadows)
 
 void evaluate_ssao()
 {
-	if (evaluate_ssao_program.IsValid())
-	{
-		// Bind the proper framebuffer
-		glBindFramebuffer(GL_FRAMEBUFFER, SSAO_Evaluation_FBO);
-		glViewport(0, 0, win_width, win_height);
+	// Bind the proper framebuffer
+	glBindFramebuffer(GL_FRAMEBUFFER, SSAO_Evaluation_FBO);
+	glViewport(0, 0, win_width, win_height);
 
-		// Bind all textures that we need
-		glActiveTexture(GL_TEXTURE0);	glBindTexture(GL_TEXTURE_2D, Gbuffer_PositionVS_Texture);
-		glActiveTexture(GL_TEXTURE1);	glBindTexture(GL_TEXTURE_2D, Gbuffer_NormalVS_Texture);
-		glActiveTexture(GL_TEXTURE2);	glBindTexture(GL_TEXTURE_2D, SSAO_RandomTangentVS_Texture);
+	// Bind all textures that we need
+	glActiveTexture(GL_TEXTURE0);	glBindTexture(GL_TEXTURE_2D, Gbuffer_PositionVS_Texture);
+	glActiveTexture(GL_TEXTURE1);	glBindTexture(GL_TEXTURE_2D, Gbuffer_NormalVS_Texture);
+	glActiveTexture(GL_TEXTURE2);	glBindTexture(GL_TEXTURE_2D, SSAO_RandomTangentVS_Texture);
 
-		// Bind all UBOs that we need
-		CameraData_ubo.BindBuffer(DEFAULT_CAMERA_BINDING);
-		// Although the binding point 1 is usually used by the data of the lights, we do not need the lights here, so we may use this binding point
-		glBindBufferBase(GL_UNIFORM_BUFFER, 1, SSAO_Samples_UBO);
+	// Bind all UBOs that we need
+	CameraData_ubo.BindBuffer(DEFAULT_CAMERA_BINDING);
+	// Although the binding point 1 is usually used by the data of the lights, we do not need the lights here, so we may use this binding point
+	glBindBufferBase(GL_UNIFORM_BUFFER, 1, SSAO_Samples_UBO);
 
-		// Use the proper program and set its uniform variables
-		evaluate_ssao_program.Use();
-		evaluate_ssao_program.Uniform1f("SSAO_Radius", SSAO_Radius);
+	// Use the proper program and set its uniform variables
+	evaluate_ssao_program.Use();
+	evaluate_ssao_program.Uniform1f("SSAO_Radius", SSAO_Radius);
 
-		// Render the fullscreen quad to evaluate every pixel
-		geom_fullscreen_quad.BindVAO();
-		geom_fullscreen_quad.Draw();
-	}
+	// Render the fullscreen quad to evaluate every pixel
+	geom_fullscreen_quad.BindVAO();
+	geom_fullscreen_quad.Draw();
+}
+
+void display_shadow_tex()
+{
+	// Use a special shader and render the shadow texture in grayscale
+	display_shadow_texture_program.Use();
+	glDisable(GL_DEPTH_TEST);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, ShadowTexture);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+
+	geom_fullscreen_quad.BindVAO();
+	geom_fullscreen_quad.Draw();
 }
 
 void render_ssao_final(bool toon_rendering)
 {
-	if (evaluate_lighting_program.IsValid())
-	{
-		// Bind all textures that we need
-		glActiveTexture(GL_TEXTURE0);	glBindTexture(GL_TEXTURE_2D, Gbuffer_PositionWS_Texture);
-		glActiveTexture(GL_TEXTURE1);	glBindTexture(GL_TEXTURE_2D, Gbuffer_NormalWS_Texture);
-		glActiveTexture(GL_TEXTURE2);	glBindTexture(GL_TEXTURE_2D, Gbuffer_Albedo_Texture);
-		glActiveTexture(GL_TEXTURE3);	glBindTexture(GL_TEXTURE_2D, SSAO_Occlusion_Texture);
+	// Bind all textures that we need
+	glActiveTexture(GL_TEXTURE0);	glBindTexture(GL_TEXTURE_2D, Gbuffer_PositionWS_Texture);
+	glActiveTexture(GL_TEXTURE1);	glBindTexture(GL_TEXTURE_2D, Gbuffer_NormalWS_Texture);
+	glActiveTexture(GL_TEXTURE2);	glBindTexture(GL_TEXTURE_2D, Gbuffer_Albedo_Texture);
+	glActiveTexture(GL_TEXTURE3);	glBindTexture(GL_TEXTURE_2D, SSAO_Occlusion_Texture);
+	glActiveTexture(GL_TEXTURE4);	glBindTexture(GL_TEXTURE_2D, ShadowTexture);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
 
-		// Bind all UBOs that we need
-		CameraData_ubo.BindBuffer(DEFAULT_CAMERA_BINDING);
-		PhongLights_ubo.BindBuffer(DEFAULT_LIGHTS_BINDING);
-		WhiteMaterial_ubo.BindBuffer(DEFAULT_MATERIAL_BINDING);		// Bind the data with the specular color and shininess (all materials have the same)
+	// Bind all UBOs that we need
+	CameraData_ubo.BindBuffer(DEFAULT_CAMERA_BINDING);
+	PhongLights_ubo.BindBuffer(DEFAULT_LIGHTS_BINDING);
+	WhiteMaterial_ubo.BindBuffer(DEFAULT_MATERIAL_BINDING);		// Bind the data with the specular color and shininess (all materials have the same)
 
-		evaluate_lighting_program.Use();
-		evaluate_lighting_program.Uniform1i("use_toon", toon_rendering ? 1 : 0);
+	evaluate_lighting_program.Use();
+	evaluate_lighting_program.Uniform1i("use_toon", toon_rendering ? 1 : 0);
+	evaluate_lighting_program.UniformMatrix4fv("shadow_matrix", 1, GL_FALSE, glm::value_ptr(ShadowMatrix));
 
-		// Render the fullscreen quad to evaluate every pixel
-		geom_fullscreen_quad.BindVAO();
-		geom_fullscreen_quad.Draw();
-	}
+	// Render the fullscreen quad to evaluate every pixel
+	geom_fullscreen_quad.BindVAO();
+	geom_fullscreen_quad.Draw();
 }
 
 /// Renders the whole frame
@@ -663,17 +666,17 @@ void render_scene()
 	//--------------------------------------
 	//--  Render into the shadow texture  --
 
-	//glBindFramebuffer(GL_FRAMEBUFFER, ShadowFBO);
-	//glViewport(0, 0, ShadowTexSize, ShadowTexSize);
+	glBindFramebuffer(GL_FRAMEBUFFER, ShadowFBO);
+	glViewport(0, 0, ShadowTexSize, ShadowTexSize);
 
-	//// Clear the framebuffer, clear only the depth (there is no color)
-	//glClearDepth(1.0);
-	//glClear(GL_DEPTH_BUFFER_BIT);
-	//glEnable(GL_DEPTH_TEST);
+	// Clear the framebuffer, clear only the depth (there is no color)
+	glClearDepth(1.0);
+	glClear(GL_DEPTH_BUFFER_BIT);
+	glEnable(GL_DEPTH_TEST);
 
-	//LightCameraData_ubo.BindBuffer(DEFAULT_CAMERA_BINDING);
+	LightCameraData_ubo.BindBuffer(DEFAULT_CAMERA_BINDING);
 
-	//render_stuff_once(true);
+	render_stuff_once(true);
 
 	//----------------------------------------------
 	//--  First, render the scene into the G-buffer
@@ -799,19 +802,6 @@ void init_gui()
 	TwAddVarRW(the_gui, "Light direction", TW_TYPE_FLOAT, &light_pos, "min=1 max=8 step=0.03");
 
 	TwAddVarRO(the_gui, "Render time (ms)", TW_TYPE_FLOAT, &render_time_ms, nullptr);
-
-	TwEnumVal displays[6] =
-	{
-		{ 0, "Final Image" },
-		{ 1, "Position" },
-		{ 2, "Normal" },
-		{ 3, "Albedo" },
-		{ 4, "Occlusion" },
-		{ 5, "ShadowTex" }
-	};
-
-	TwType displayType = TwDefineEnum("WhatToDisplay", displays, 6);
-	TwAddVarRW(the_gui, "Display", displayType, &what_to_display, nullptr);
 }
 
 //---------------------------
